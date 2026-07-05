@@ -1,0 +1,24 @@
+# Environment
+.env
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.dist-info/
+
+# Generated output
+output/
+
+# Lock files
+uv.lock
+*.lock
+
+# IDE
+.vscode/
+.idea/

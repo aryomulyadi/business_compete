@@ -1,0 +1,53 @@
+research_task:
+  description: >
+    Cari informasi mendalam tentang kompetitor bisnis di bidang {business_field}.
+    Kumpulkan data berikut sebanyak mungkin:
+    1. Daftar kompetitor utama beserta harga produk/layanan mereka
+    2. Fitur-fitur unggulan yang ditawarkan setiap kompetitor
+    3. Review negatif atau kelemahan yang sering dikeluhkan pelanggan
+    4. Strategi pemasaran yang mereka gunakan
+
+    Gunakan SerperDevTool untuk mencari di internet. Catat URL sumber setiap informasi.
+  expected_output: >
+    Dokumen teks terstruktur berisi data mentah kompetitor: daftar kompetitor,
+    harga, fitur, review negatif, dan sumber URL. Semua dalam Bahasa Indonesia.
+  agent: researcher
+
+analysis_task:
+  description: >
+    Berdasarkan data mentah dari Researcher, lakukan analisis berikut:
+    1. Buat Analisis SWOT (Strengths, Weaknesses, Opportunities, Threats)
+    untuk bisnis klien di bidang {business_field}
+    2. Buat tabel perbandingan fitur dan harga antar kompetitor
+    3. Berikan strategi positioning yang membedakan klien dari kompetitor
+    4. Identifikasi celah pasar (market gap) yang bisa dimanfaatkan
+
+    Gunakan data yang sudah dikumpulkan, jangan berasumsi tanpa data.
+  expected_output: >
+    Dokumen analisis yang mencakup SWOT matrix, tabel perbandingan kompetitor,
+    strategi positioning, dan market gap. Semua dalam Bahasa Indonesia.
+  agent: analyst
+
+writing_task:
+  description: >
+    Berdasarkan hasil analisis dari Analyst, buat laporan akhir dalam format
+    Markdown (.md) dengan struktur berikut:
+
+    # Laporan Analisis Kompetitor — {business_field}
+
+    ## 1. Ringkasan Eksekutif
+    ## 2. Metodologi
+    ## 3. Profil Kompetitor Utama
+    ## 4. Perbandingan Fitur & Harga
+    ## 5. Analisis SWOT
+    ## 6. Strategi Positioning
+    ## 7. Market Gap & Rekomendasi
+    ## 8. Kesimpulan
+    ## 9. Daftar Sumber (URL)
+
+    Tulis dalam Bahasa Indonesia yang profesional, rapi, dan actionable.
+    Simpan laporan ke file Markdown.
+  expected_output: >
+    File Markdown (.md) berisi laporan analisis kompetitor yang lengkap,
+    terstruktur, dan siap dipresentasikan. Semua dalam Bahasa Indonesia.
+  agent: writer
