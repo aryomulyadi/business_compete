@@ -19,6 +19,12 @@ output/
 uv.lock
 *.lock
 
-# IDE
-.vscode/
-.idea/
+# Database
+*.db
+*.sqlite
+
+# Cache
+output/cache/
+
+# Environment example (template, not actual keys)
+.env.example

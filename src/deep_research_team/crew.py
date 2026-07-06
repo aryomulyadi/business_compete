@@ -1,10 +1,16 @@
 from typing import List
-from crewai import Agent, Crew, Process, Task
-from crewai.project import CrewBase, agent, crew, task
-from crewai.agents.agent_builder.base_agent import BaseAgent
 
-from deep_research_team.tools.search_tool import search_tool
+from crewai import Agent, Crew, Process, Task
+from crewai.agents.agent_builder.base_agent import BaseAgent
+from crewai.project import CrewBase, agent, crew, task
+
 from deep_research_team.tools.llm_utils import get_llm
+from deep_research_team.tools.search_tool import (
+    deep_search,
+    scrape_website,
+    search_internet,
+)
+from deep_research_team.tools.progress import progress_step_handler
 
 
 @CrewBase
@@ -21,24 +27,26 @@ class DeepResearchCrew:
     def researcher(self) -> Agent:
         return Agent(
             config=self.agents_config["researcher"],  # type: ignore[index]
-            llm=get_llm(),
-            tools=[search_tool],
+            llm=get_llm(max_tokens=4096),
+            tools=[search_internet, scrape_website, deep_search],
             verbose=True,
+            max_iter=8,
         )
 
     @agent
     def analyst(self) -> Agent:
         return Agent(
             config=self.agents_config["analyst"],  # type: ignore[index]
-            llm=get_llm(),
+            llm=get_llm(max_tokens=8192),
             verbose=True,
+            max_iter=3,
         )
 
     @agent
     def writer(self) -> Agent:
         return Agent(
             config=self.agents_config["writer"],  # type: ignore[index]
-            llm=get_llm(),
+            llm=get_llm(max_tokens=16384),
             verbose=True,
         )
 
@@ -71,4 +79,5 @@ class DeepResearchCrew:
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
+            step_callback=progress_step_handler,
         )

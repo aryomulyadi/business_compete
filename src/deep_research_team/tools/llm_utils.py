@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import time
 from typing import Any
@@ -13,7 +14,7 @@ litellm.drop_params = True
 
 
 def _strip_cache_breakpoint(messages: list[dict]) -> None:
-    """Remove cache_breakpoint key from every message (Groq doesn't support it)."""
+    """Remove cache_breakpoint key from every message (some providers don't support it)."""
     for msg in messages:
         if isinstance(msg, dict):
             msg.pop("cache_breakpoint", None)
@@ -39,7 +40,7 @@ litellm.completion = _patched_completion
 litellm.acompletion = _patched_acompletion
 
 
-PRIMARY_MODEL = "groq/llama-3.3-70b-versatile"
+PRIMARY_MODEL = "openai/mimo-v2.5-pro"
 FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
 MAX_RETRIES = 3
 BASE_DELAY = 2.0
@@ -55,6 +56,69 @@ def _is_retryable(error: Exception) -> bool:
     return False
 
 
+class MimoDirect:
+    """Direct Mimo API caller — bypasses LiteLLM to avoid unsupported params."""
+
+    _SAFE_KEYS = frozenset({
+        "temperature", "max_tokens", "top_p",
+        "stream", "stop", "frequency_penalty", "presence_penalty",
+        "response_format", "n",
+    })
+
+    def __init__(self, model: str = "mimo-v2.5-pro", max_tokens: int = 8192) -> None:
+        import openai as _openai
+
+        self.model = model
+        self._max_tokens = max_tokens
+        api_key = os.getenv("MIMO_API_KEY", "")
+        base_url = "https://api.xiaomimimo.com/v1"
+        self._client = _openai.OpenAI(api_key=api_key, base_url=base_url)
+        self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+    def _build_kwargs(self, kwargs: dict) -> dict:
+        return {k: v for k, v in kwargs.items() if k in self._SAFE_KEYS}
+
+    def call(self, messages: Any, **kwargs: Any) -> str:
+        safe = self._build_kwargs(kwargs)
+        safe.setdefault("max_tokens", self._max_tokens)
+        response = self._client.chat.completions.create(
+            model=self.model, messages=messages, **safe,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            import sys as _sys
+            print(
+                f"[MimoDirect] empty content (finish={response.choices[0].finish_reason}, "
+                f"id={response.id}, model={response.model})",
+                file=_sys.stderr,
+            )
+            return (
+                f"[Mimo API returned empty response (finish_reason="
+                f"{response.choices[0].finish_reason}, id={response.id})]"
+            )
+        return content
+
+    async def acall(self, messages: Any, **kwargs: Any) -> str:
+        safe = self._build_kwargs(kwargs)
+        safe.setdefault("max_tokens", self._max_tokens)
+        response = await self._aclient.chat.completions.create(
+            model=self.model, messages=messages, **safe,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            import sys as _sys
+            print(
+                f"[MimoDirect] empty content (finish={response.choices[0].finish_reason}, "
+                f"id={response.id}, model={response.model})",
+                file=_sys.stderr,
+            )
+            return (
+                f"[Mimo API returned empty response (finish_reason="
+                f"{response.choices[0].finish_reason}, id={response.id})]"
+            )
+        return content
+
+
 class RetryableLLM(BaseLLM):
     """BaseLLM subclass with automatic retry (exponential backoff) and fallback model."""
 
@@ -65,14 +129,21 @@ class RetryableLLM(BaseLLM):
 
     def __init__(self, **kwargs: Any) -> None:
         model = kwargs.pop("model", PRIMARY_MODEL)
-        model_clean = model.replace("groq/", "").replace("gemini/", "")
+        max_tokens = kwargs.pop("max_tokens", None)
+        provider = model.split("/")[0] if "/" in model else "openai"
         super().__init__(
-            llm_type="groq",
+            llm_type=provider,
             model=model,
-            provider="openai",
             **kwargs,
         )
-        self._llm = LLM(model=model)
+        if "mimo" in model.lower():
+            raw_model = model.split("/", 1)[1] if "/" in model else model
+            mimo_kwargs = {"model": raw_model}
+            if max_tokens is not None:
+                mimo_kwargs["max_tokens"] = max_tokens
+            self._llm = MimoDirect(**mimo_kwargs)
+        else:
+            self._llm = LLM(model=model)
 
     def call(
         self,
@@ -80,7 +151,6 @@ class RetryableLLM(BaseLLM):
         **kwargs: Any,
     ) -> Any:
         last_error = None
-        primary = self.primary_model
         fallback = self.fallback_model
 
         for attempt in range(MAX_RETRIES):
@@ -104,7 +174,6 @@ class RetryableLLM(BaseLLM):
         **kwargs: Any,
     ) -> Any:
         last_error = None
-        primary = self.primary_model
         fallback = self.fallback_model
 
         for attempt in range(MAX_RETRIES):
@@ -123,6 +192,21 @@ class RetryableLLM(BaseLLM):
         raise last_error  # type: ignore[misc]
 
 
-def get_llm() -> BaseLLM:
-    """Create a RetryableLLM instance."""
-    return RetryableLLM(model=PRIMARY_MODEL)
+_PROVIDER_MAP = {
+    "deepseek": "deepseek/deepseek-chat",
+    "groq": "groq/llama-3.3-70b-versatile",
+    "gemini": "gemini/gemini-2.5-flash",
+    "openai": "gpt-4o",
+    "openai-mini": "gpt-4o-mini",
+    "mimo": "openai/mimo-v2.5-pro",
+}
+
+
+def get_llm(max_tokens: int | None = None) -> BaseLLM:
+    """Create a RetryableLLM instance based on LLM_PROVIDER env var."""
+    provider = os.getenv("LLM_PROVIDER", "mimo").lower()
+    model = _PROVIDER_MAP.get(provider, PRIMARY_MODEL)
+    kwargs: dict = {"model": model}
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    return RetryableLLM(**kwargs)

@@ -7,10 +7,25 @@ research_task:
     3. Review negatif atau kelemahan yang sering dikeluhkan pelanggan
     4. Strategi pemasaran yang mereka gunakan
 
-    Gunakan SerperDevTool untuk mencari di internet. Catat URL sumber setiap informasi.
+    ATURAN PENTING:
+    - WAJIB GUNAKAN tools search_internet, scrape_website, dan deep_search
+      untuk SETIAP informasi yang dikumpulkan.
+    - Search tools mengembalikan data dalam format JSON yang dibungkus marker
+      ---[SEARCH_RESULT]--- dan ---[/SEARCH_RESULT]---. Ambil data dari
+      bagian "organic" pada JSON tersebut.
+    - DILARANG KERAS membuat atau menciptakan URL palsu. HANYA gunakan URL
+      yang benar-benar berasal dari output search tools.
+    - DILARANG KERAS menebak-nebak atau membuat data tanpa benar-benar
+      memanggil tools terlebih dahulu.
+    - Setiap URL harus diverifikasi: jika search tool mengembalikan
+      "url_valid": false untuk suatu URL, jangan gunakan URL tersebut.
+    - Jika search tool gagal atau mengembalikan error, laporkan errornya
+      dan jangan membuat data pengganti.
+    - Catat URL sumber setiap informasi.
   expected_output: >
     Dokumen teks terstruktur berisi data mentah kompetitor: daftar kompetitor,
-    harga, fitur, review negatif, dan sumber URL. Semua dalam Bahasa Indonesia.
+    harga, fitur, review negatif, dan sumber URL (hanya URL yang valid).
+    Semua dalam Bahasa Indonesia.
   agent: researcher
 
 analysis_task:
@@ -18,14 +33,20 @@ analysis_task:
     Berdasarkan data mentah dari Researcher, lakukan analisis berikut:
     1. Buat Analisis SWOT (Strengths, Weaknesses, Opportunities, Threats)
     untuk bisnis klien di bidang {business_field}
-    2. Buat tabel perbandingan fitur dan harga antar kompetitor
-    3. Berikan strategi positioning yang membedakan klien dari kompetitor
-    4. Identifikasi celah pasar (market gap) yang bisa dimanfaatkan
+    2. Buat analisis Porter's Five Forces (Threat of New Entrants,
+    Bargaining Power of Suppliers, Bargaining Power of Buyers,
+    Threat of Substitutes, Industry Rivalry)
+    3. Buat analisis PESTEL (Political, Economic, Social, Technological,
+    Environmental, Legal) yang relevan
+    4. Buat tabel perbandingan fitur dan harga antar kompetitor
+    5. Berikan strategi positioning yang membedakan klien dari kompetitor
+    6. Identifikasi celah pasar (market gap) yang bisa dimanfaatkan
 
     Gunakan data yang sudah dikumpulkan, jangan berasumsi tanpa data.
   expected_output: >
-    Dokumen analisis yang mencakup SWOT matrix, tabel perbandingan kompetitor,
-    strategi positioning, dan market gap. Semua dalam Bahasa Indonesia.
+    Dokumen analisis yang mencakup SWOT matrix, Porter's Five Forces,
+    PESTEL, tabel perbandingan kompetitor, strategi positioning, dan
+    market gap. Semua dalam Bahasa Indonesia.
   agent: analyst
 
 writing_task:
@@ -40,14 +61,22 @@ writing_task:
     ## 3. Profil Kompetitor Utama
     ## 4. Perbandingan Fitur & Harga
     ## 5. Analisis SWOT
-    ## 6. Strategi Positioning
-    ## 7. Market Gap & Rekomendasi
-    ## 8. Kesimpulan
-    ## 9. Daftar Sumber (URL)
+    ## 6. Porter's Five Forces
+    ## 7. Analisis PESTEL
+    ## 8. Strategi Positioning
+    ## 9. Market Gap & Rekomendasi
+    ## 10. Kesimpulan
+    ## 11. Daftar Sumber (URL)
 
     Tulis dalam Bahasa Indonesia yang profesional, rapi, dan actionable.
-    Simpan laporan ke file Markdown.
+
+    ATURAN PENTING:
+    - Output harus berupa teks Markdown mentah, JANGAN dibungkus dengan
+      triple backtick (```markdown ... ```) atau tag apapun.
+    - Langsung tulis konten Markdown tanpa pembungkus.
+    - Beri jarak baris kosong antar seksi agar rapi.
   expected_output: >
-    File Markdown (.md) berisi laporan analisis kompetitor yang lengkap,
-    terstruktur, dan siap dipresentasikan. Semua dalam Bahasa Indonesia.
+    Teks Markdown mentah (tanpa pembungkus code block) berisi laporan
+    analisis kompetitor yang lengkap, terstruktur, dan siap dipresentasikan.
+    Semua dalam Bahasa Indonesia.
   agent: writer
