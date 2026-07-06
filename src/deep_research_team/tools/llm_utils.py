@@ -5,10 +5,15 @@ import time
 from typing import Any
 
 import litellm
+from litellm.exceptions import RateLimitError, ServiceUnavailableError
 from crewai import LLM
 from crewai.llms.base_llm import BaseLLM
 from crewai.utilities.types import LLMMessage
 from pydantic import PrivateAttr
+
+from deep_research_team.settings import setup_logging
+
+logger = setup_logging(__name__)
 
 litellm.drop_params = True
 
@@ -49,6 +54,8 @@ RETRYABLE_CODES = {429, 503}
 
 
 def _is_retryable(error: Exception) -> bool:
+    if isinstance(error, (ValueError, RateLimitError, ServiceUnavailableError)):
+        return True
     error_str = str(error)
     for code in RETRYABLE_CODES:
         if str(code) in error_str:
@@ -86,15 +93,15 @@ class MimoDirect:
         )
         content = response.choices[0].message.content
         if not content:
-            import sys as _sys
-            print(
-                f"[MimoDirect] empty content (finish={response.choices[0].finish_reason}, "
-                f"id={response.id}, model={response.model})",
-                file=_sys.stderr,
+            logger.warning(
+                "MimoDirect empty content (finish=%s, id=%s, model=%s) — raising ValueError",
+                response.choices[0].finish_reason,
+                response.id,
+                response.model,
             )
-            return (
-                f"[Mimo API returned empty response (finish_reason="
-                f"{response.choices[0].finish_reason}, id={response.id})]"
+            raise ValueError(
+                f"Mimo API returned empty content (finish_reason="
+                f"{response.choices[0].finish_reason}, id={response.id})"
             )
         return content
 
@@ -106,15 +113,15 @@ class MimoDirect:
         )
         content = response.choices[0].message.content
         if not content:
-            import sys as _sys
-            print(
-                f"[MimoDirect] empty content (finish={response.choices[0].finish_reason}, "
-                f"id={response.id}, model={response.model})",
-                file=_sys.stderr,
+            logger.warning(
+                "MimoDirect empty content (finish=%s, id=%s, model=%s) — raising ValueError",
+                response.choices[0].finish_reason,
+                response.id,
+                response.model,
             )
-            return (
-                f"[Mimo API returned empty response (finish_reason="
-                f"{response.choices[0].finish_reason}, id={response.id})]"
+            raise ValueError(
+                f"Mimo API returned empty content (finish_reason="
+                f"{response.choices[0].finish_reason}, id={response.id})"
             )
         return content
 
@@ -156,6 +163,7 @@ class RetryableLLM(BaseLLM):
         for attempt in range(MAX_RETRIES):
             try:
                 if attempt > 0:
+                    logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
                 return self._llm.call(messages, **kwargs)
@@ -164,6 +172,10 @@ class RetryableLLM(BaseLLM):
                 if not _is_retryable(e):
                     raise
                 delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                logger.warning(
+                    "Attempt %d failed (%s: %s), retrying in %.1fs",
+                    attempt, type(e).__name__, e, delay,
+                )
                 time.sleep(delay)
 
         raise last_error  # type: ignore[misc]
@@ -179,6 +191,7 @@ class RetryableLLM(BaseLLM):
         for attempt in range(MAX_RETRIES):
             try:
                 if attempt > 0:
+                    logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
                 return await self._llm.acall(messages, **kwargs)
@@ -187,6 +200,10 @@ class RetryableLLM(BaseLLM):
                 if not _is_retryable(e):
                     raise
                 delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                logger.warning(
+                    "Attempt %d failed (%s: %s), retrying in %.1fs",
+                    attempt, type(e).__name__, e, delay,
+                )
                 await asyncio.sleep(delay)
 
         raise last_error  # type: ignore[misc]

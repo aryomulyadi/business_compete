@@ -10,9 +10,16 @@ os.environ.setdefault("LITELLM_DROP_PARAMS", "true")
 from dotenv import load_dotenv
 
 from deep_research_team.crew import DeepResearchCrew
+from deep_research_team.settings import (
+    ENV_VARS,
+    REPORT_FILE,
+    setup_logging,
+)
 from deep_research_team.tools.export_utils import md_to_html, md_to_pdf
 from deep_research_team.tools.progress import ProgressCallback, reset_progress
 from deep_research_team.tools.search_tool import check_serper_api_key, filter_fake_urls_from_report
+
+logger = setup_logging(__name__)
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
@@ -21,23 +28,24 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
 
 load_dotenv()
 
-os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
-os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY")
-os.environ["DEEPSEEK_API_KEY"] = os.getenv("DEEPSEEK_API_KEY")
-os.environ["MIMO_API_KEY"] = os.getenv("MIMO_API_KEY")
+for var in ENV_VARS:
+    os.environ[var] = os.getenv(var, "")
 
-ok, msg = check_serper_api_key()
-if not ok:
-    print(f"⚠️  PERINGATAN: {msg}")
-    print("   Pencarian internet mungkin gagal dan LLM bisa menghasilkan data palsu.")
-else:
-    print(f"✅ Serper API: {msg}")
 
-REPORT_FILE = "output/laporan_analisis_kompetitor.md"
+def check_serper() -> bool:
+    ok, msg = check_serper_api_key()
+    if not ok:
+        logger.warning("Serper API: %s", msg)
+        logger.warning("Pencarian internet mungkin gagal dan LLM bisa menghasilkan data palsu.")
+    else:
+        logger.info("Serper API: %s", msg)
+    return ok
 
 
 def run():
     reset_progress()
+    check_serper()
+
     business_field = input(
         "Masukkan bidang bisnis yang ingin dianalisis (contoh: 'E-commerce Fesyen'): "
     )
@@ -55,10 +63,17 @@ def run():
     print("  LAPORAN TELAH BERHASIL DIBUAT!")
     print("=" * 60)
 
-    md_path = REPORT_FILE
+    md_path = str(REPORT_FILE)
     if os.path.exists(md_path):
         with open(md_path, "r", encoding="utf-8") as f:
             md_content = f.read()
+
+        if len(md_content.strip()) < 50:
+            logger.warning("Report terlalu pendek (%d chars), kemungkinan analisis gagal. Skip export.", len(md_content.strip()))
+            print(f"  File report terlalu pendek — analisis mungkin gagal.")
+            print(f"  Cek: {md_path}")
+            print("=" * 60)
+            return result
 
         md_content = filter_fake_urls_from_report(md_content)
         with open(md_path, "w", encoding="utf-8") as f:
@@ -94,15 +109,23 @@ def train():
         DeepResearchCrew().crew().train(
             n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs
         )
+    except IndexError:
+        logger.error("train: argumen tidak lengkap. Gunakan: train <n_iterations> <filename>")
+        raise
     except Exception as e:
-        raise Exception(f"An error occurred while training the crew: {e}")
+        logger.exception("Gagal menjalankan training")
+        raise
 
 
 def replay():
     try:
         DeepResearchCrew().crew().replay(task_id=sys.argv[1])
+    except IndexError:
+        logger.error("replay: argumen task_id tidak diberikan")
+        raise
     except Exception as e:
-        raise Exception(f"An error occurred while replaying the crew: {e}")
+        logger.exception("Gagal menjalankan replay")
+        raise
 
 
 def test():
@@ -114,8 +137,12 @@ def test():
         DeepResearchCrew().crew().test(
             n_iterations=int(sys.argv[1]), eval_llm=sys.argv[2], inputs=inputs
         )
+    except IndexError:
+        logger.error("test: argumen tidak lengkap. Gunakan: test <n_iterations> <eval_llm>")
+        raise
     except Exception as e:
-        raise Exception(f"An error occurred while testing the crew: {e}")
+        logger.exception("Gagal menjalankan test")
+        raise
 
 
 if __name__ == "__main__":

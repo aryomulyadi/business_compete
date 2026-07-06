@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Streamlit UI untuk Deep Research Team."""
 
 import os
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("LITELLM_DROP_PARAMS", "true")
@@ -13,10 +13,18 @@ os.environ.setdefault("LITELLM_DROP_PARAMS", "true")
 from dotenv import load_dotenv
 
 load_dotenv()
-os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
-os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY")
-os.environ["DEEPSEEK_API_KEY"] = os.getenv("DEEPSEEK_API_KEY")
-os.environ["MIMO_API_KEY"] = os.getenv("MIMO_API_KEY")
+
+from deep_research_team.settings import (
+    DB_PATH,
+    ENV_VARS,
+    REPORT_FILE,
+    setup_logging,
+)
+
+for var in ENV_VARS:
+    os.environ[var] = os.getenv(var, "")
+
+logger = setup_logging(__name__)
 
 import streamlit as st
 from deep_research_team.crew import DeepResearchCrew
@@ -60,9 +68,6 @@ div[data-testid="stSidebar"] > div:first-child {
 
 st.markdown(_CSS, unsafe_allow_html=True)
 
-DB_PATH = "output/history.db"
-REPORT_FILE = "output/laporan_analisis_kompetitor.md"
-
 
 def _strip_code_fence(text: str) -> str:
     """Remove surrounding ```markdown ... ``` fence if present."""
@@ -76,8 +81,8 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _init_db() -> None:
-    Path("output").mkdir(exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS history (
@@ -94,8 +99,8 @@ def _init_db() -> None:
     conn.close()
 
 
-def _save_history(field: str, status: str, report_path: str | None = None, error: str | None = None) -> int:
-    conn = sqlite3.connect(DB_PATH)
+def _save_history(field: str, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> int:
+    conn = sqlite3.connect(str(DB_PATH))
     cur = conn.execute(
         "INSERT INTO history (business_field, status, created_at, report_path, error) VALUES (?, ?, ?, ?, ?)",
         (field, status, datetime.now().isoformat(), report_path, error),
@@ -106,8 +111,8 @@ def _save_history(field: str, status: str, report_path: str | None = None, error
     return row_id
 
 
-def _update_history(row_id: int, status: str, report_path: str | None = None, error: str | None = None) -> None:
-    conn = sqlite3.connect(DB_PATH)
+def _update_history(row_id: int, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> None:
+    conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
         "UPDATE history SET status=?, report_path=COALESCE(?, report_path), error=? WHERE id=?",
         (status, report_path, error, row_id),
@@ -116,8 +121,8 @@ def _update_history(row_id: int, status: str, report_path: str | None = None, er
     conn.close()
 
 
-def _get_history(limit: int = 20) -> list[dict]:
-    conn = sqlite3.connect(DB_PATH)
+def _get_history(limit: int = 20) -> list[dict[str, Any]]:
+    conn = sqlite3.connect(str(DB_PATH))
     rows = conn.execute(
         "SELECT id, business_field, status, created_at, report_path, error FROM history ORDER BY id DESC LIMIT ?",
         (limit,),
@@ -212,17 +217,23 @@ if run_clicked and business_field:
             inputs={"business_field": field_clean}
         )
 
-        _update_history(row_id, "completed", report_path=REPORT_FILE)
+        _update_history(row_id, "completed", report_path=str(REPORT_FILE))
         progress_placeholder.progress(100, text="Selesai!")
         status_placeholder.success(f"Analisis **{field_clean}** selesai!")
 
         with result_placeholder:
             st.divider()
 
-            report_path = Path(REPORT_FILE)
+            report_path = REPORT_FILE
             if report_path.exists():
                 with open(report_path, "r", encoding="utf-8") as f:
                     report_content = f.read()
+
+                if len(report_content.strip()) < 50:
+                    st.warning(f"⚠️ Report terlalu pendek ({len(report_content.strip())} chars) — analisis mungkin gagal. Periksa file markdown untuk detail.")
+                    _update_history(row_id, "failed", error="Report terlalu pendek")
+                    status_placeholder.error("Analisis gagal — output tidak mencukupi. Coba ubah provider LLM atau ulangi.")
+                    st.stop()
 
                 report_content = filter_fake_urls_from_report(report_content)
                 report_content = _strip_code_fence(report_content)

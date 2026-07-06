@@ -28,3 +28,7 @@ output/cache/
 
 # Environment example (template, not actual keys)
 .env.example
+
+# Testing
+.pytest_cache/
+tests/__pycache__/

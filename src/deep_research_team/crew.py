@@ -4,6 +4,17 @@ from crewai import Agent, Crew, Process, Task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
 
+from deep_research_team.settings import (
+    AGENTS_CONFIG,
+    ANALYST_MAX_ITER,
+    ANALYST_MAX_TOKENS,
+    REPORT_FILE,
+    RESEARCHER_MAX_ITER,
+    RESEARCHER_MAX_TOKENS,
+    TASKS_CONFIG,
+    WRITER_MAX_TOKENS,
+    setup_logging,
+)
 from deep_research_team.tools.llm_utils import get_llm
 from deep_research_team.tools.search_tool import (
     deep_search,
@@ -11,6 +22,8 @@ from deep_research_team.tools.search_tool import (
     search_internet,
 )
 from deep_research_team.tools.progress import progress_step_handler
+
+logger = setup_logging(__name__)
 
 
 @CrewBase
@@ -20,60 +33,59 @@ class DeepResearchCrew:
     agents: List[BaseAgent]
     tasks: List[Task]
 
-    agents_config = "config/agents.yaml"
-    tasks_config = "config/tasks.yaml"
+    agents_config = AGENTS_CONFIG
+    tasks_config = TASKS_CONFIG
 
     @agent
     def researcher(self) -> Agent:
         return Agent(
-            config=self.agents_config["researcher"],  # type: ignore[index]
-            llm=get_llm(max_tokens=4096),
+            config=self.agents_config["researcher"],
+            llm=get_llm(max_tokens=RESEARCHER_MAX_TOKENS),
             tools=[search_internet, scrape_website, deep_search],
             verbose=True,
-            max_iter=8,
+            max_iter=RESEARCHER_MAX_ITER,
         )
 
     @agent
     def analyst(self) -> Agent:
         return Agent(
-            config=self.agents_config["analyst"],  # type: ignore[index]
-            llm=get_llm(max_tokens=8192),
+            config=self.agents_config["analyst"],
+            llm=get_llm(max_tokens=ANALYST_MAX_TOKENS),
             verbose=True,
-            max_iter=3,
+            max_iter=ANALYST_MAX_ITER,
         )
 
     @agent
     def writer(self) -> Agent:
         return Agent(
-            config=self.agents_config["writer"],  # type: ignore[index]
-            llm=get_llm(max_tokens=16384),
+            config=self.agents_config["writer"],
+            llm=get_llm(max_tokens=WRITER_MAX_TOKENS),
             verbose=True,
         )
 
     @task
     def research_task(self) -> Task:
         return Task(
-            config=self.tasks_config["research_task"],  # type: ignore[index]
+            config=self.tasks_config["research_task"],
         )
 
     @task
     def analysis_task(self) -> Task:
         return Task(
-            config=self.tasks_config["analysis_task"],  # type: ignore[index]
+            config=self.tasks_config["analysis_task"],
             context=[self.research_task()],
         )
 
     @task
     def writing_task(self) -> Task:
         return Task(
-            config=self.tasks_config["writing_task"],  # type: ignore[index]
+            config=self.tasks_config["writing_task"],
             context=[self.analysis_task()],
-            output_file="output/laporan_analisis_kompetitor.md",
+            output_file=str(REPORT_FILE),
         )
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Deep Research Team crew"""
         return Crew(
             agents=self.agents,
             tasks=self.tasks,

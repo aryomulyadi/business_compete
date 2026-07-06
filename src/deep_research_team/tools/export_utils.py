@@ -1,20 +1,25 @@
 import os
+import re
 import sys
+from typing import Optional
 
 import markdown
 
-_UNICODE_FONT = None
-_BOLD_FONT = None
+from deep_research_team.settings import setup_logging
+
+logger = setup_logging(__name__)
+
+_UNICODE_FONT: Optional[str] = None
+_BOLD_FONT: Optional[str] = None
 
 _FONT_CANDIDATES: list[tuple[str, str]] = [
-    # Windows (most common Unicode fonts)
     ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
-    ("C:\\Windows\\Fonts\\micross.ttf", "C:\\Windows\\Fonts\\micross.ttf"),        # Microsoft Sans Serif
+    ("C:\\Windows\\Fonts\\micross.ttf", "C:\\Windows\\Fonts\\micross.ttf"),
     ("C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf"),
     ("C:\\Windows\\Fonts\\verdana.ttf", "C:\\Windows\\Fonts\\verdanab.ttf"),
     ("C:\\Windows\\Fonts\\tahoma.ttf", "C:\\Windows\\Fonts\\tahomabd.ttf"),
     ("C:\\Windows\\Fonts\\calibri.ttf", "C:\\Windows\\Fonts\\calibrib.ttf"),
-    ("C:\\Windows\\Fonts\\constan.ttf", "C:\\Windows\\Fonts\\constanb.ttf"),       # Constantia
+    ("C:\\Windows\\Fonts\\constan.ttf", "C:\\Windows\\Fonts\\constanb.ttf"),
 ]
 
 if sys.platform == "linux":
@@ -45,15 +50,27 @@ def _sanitize_for_pdf(text: str) -> str:
         '\u00a0': ' ',      # non-breaking space
     })
     text = text.translate(_table)
-    import re as _re
-    # Win-1252 printable range + tab/LF/CR; strip everything else
-    return _re.sub(r'[^\t\n\r\x20-\x7E\xA0-\xFF]', '', text)
+    return re.sub(r'[^\t\n\r\x20-\x7E\xA0-\xFF]', '', text)
 
 for candidate, bold_candidate in _FONT_CANDIDATES:
     if os.path.exists(candidate) and os.path.exists(bold_candidate):
         _UNICODE_FONT = candidate
         _BOLD_FONT = bold_candidate if candidate.lower() != bold_candidate.lower() else None
         break
+
+
+_TABLE_CELL_RE = re.compile(r'<(td|th)([^>]*)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
+_STRIP_TAGS_RE = re.compile(r'</?(thead|tbody|tfoot)[^>]*>', re.IGNORECASE)
+
+
+def _simplify_html_for_pdf(html: str) -> str:
+    html = _STRIP_TAGS_RE.sub('', html)
+    def _replace_cell(m: re.Match) -> str:
+        tag, attrs, content = m.group(1), m.group(2), m.group(3)
+        flat = re.sub(r'<[^>]+>', '', content)
+        tag_out = 'td' if tag.lower() == 'th' else tag
+        return f'<{tag_out}{attrs}>{flat}</{tag_out}>'
+    return _TABLE_CELL_RE.sub(_replace_cell, html)
 
 
 def md_to_html(md_content: str) -> str:
@@ -81,6 +98,7 @@ def md_to_pdf(md_content: str) -> bytes | None:
         from fpdf import FPDF
 
         html = markdown.markdown(cleaned, extensions=["tables", "fenced_code"])
+        html = _simplify_html_for_pdf(html)
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.add_page()
 
@@ -101,12 +119,7 @@ def md_to_pdf(md_content: str) -> bytes | None:
             pdf.set_font("Courier", "", 10)
 
         pdf.write_html(html)
-        result = pdf.output(dest="S")
-        if isinstance(result, bytearray):
-            return bytes(result)
-        if isinstance(result, bytes):
-            return result
-        return result.encode("latin-1")
+        return bytes(pdf.output())
     except Exception as exc:
-        print(f"[md_to_pdf] PDF generation failed: {exc}", file=sys.stderr)
+        logger.error("PDF generation failed: %s", exc)
         return None

@@ -75,6 +75,12 @@ writing_task:
       triple backtick (```markdown ... ```) atau tag apapun.
     - Langsung tulis konten Markdown tanpa pembungkus.
     - Beri jarak baris kosong antar seksi agar rapi.
+    - **URL SUMBER**: Setiap URL di bagian "Daftar Sumber" HARUS spesifik
+      (halaman artikel, halaman produk, atau halaman spesifik lainnya).
+      DILARANG mencantumkan homepage domain generik seperti tokopedia.com,
+      shopee.co.id, tiktok.com, atau instagram.com sebagai sumber.
+      Hanya gunakan URL yang benar-benar spesifik yang dihasilkan dari
+      tool search_internet / deep_search.
   expected_output: >
     Teks Markdown mentah (tanpa pembungkus code block) berisi laporan
     analisis kompetitor yang lengkap, terstruktur, dan siap dipresentasikan.

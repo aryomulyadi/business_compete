@@ -6,12 +6,16 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from crewai.tools import tool
 from crewai_tools import ScrapeWebsiteTool, SerperDevTool
 
-CACHE_DIR = "output/cache"
+from deep_research_team.settings import CACHE_DIR, SERPER_TIMEOUT, URL_VALIDATE_TIMEOUT, setup_logging
+
+logger = setup_logging(__name__)
+
 _SEARCH_MARKER_START = "---[SEARCH_RESULT]---"
 _SEARCH_MARKER_END = "---[/SEARCH_RESULT]---"
 _URL_PATTERN = re.compile(r"https?://[^\s\)\"'\]]+")
@@ -22,21 +26,21 @@ def _cache_key(query: str) -> str:
 
 
 def _read_cache(key: str) -> Any | None:
-    path = os.path.join(CACHE_DIR, f"{key}.json")
-    if os.path.exists(path):
+    path = CACHE_DIR / f"{key}.json"
+    if path.exists():
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
 
 
 def _write_cache(key: str, data: Any) -> None:
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    path = os.path.join(CACHE_DIR, f"{key}.json")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = CACHE_DIR / f"{key}.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _validate_url(url: str, timeout: int = 5) -> bool:
+def _validate_url(url: str, timeout: int = URL_VALIDATE_TIMEOUT) -> bool:
     """Check if a URL is reachable via HEAD request."""
     if not url or not url.startswith("http"):
         return False
@@ -64,12 +68,10 @@ def _wrap_json_result(data: dict) -> str:
 
 
 def _get_cached_urls() -> set[str]:
-    """Collect all URLs that exist in Serper cache (proven real)."""
     cached_urls: set[str] = set()
-    cache_dir = Path(CACHE_DIR)
-    if not cache_dir.exists():
+    if not CACHE_DIR.exists():
         return cached_urls
-    for fpath in cache_dir.glob("*.json"):
+    for fpath in CACHE_DIR.glob("*.json"):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -80,6 +82,16 @@ def _get_cached_urls() -> set[str]:
         except (json.JSONDecodeError, OSError):
             continue
     return cached_urls
+
+
+def _is_generic_url(url: str) -> bool:
+    """Check if URL is too generic (domain root or home page only)."""
+    parsed = urlparse(url)
+    path = parsed.path.rstrip("/")
+    if not path:
+        return True
+    segments = [s for s in path.split("/") if s and not s.startswith("#")]
+    return len(segments) <= 1
 
 
 def _is_url_fake(url: str, cached_urls: set[str]) -> bool:
@@ -96,13 +108,16 @@ _URL_BARE_PATTERN = re.compile(r"https?://[^\s\)\"'\]]+")
 
 
 def filter_fake_urls_from_report(report_text: str) -> str:
-    """Remove fake URLs from report text.
+    """Remove/flag fake and generic URLs from report text.
+
     - URLs in Serper cache -> kept as-is
     - URLs not in cache but reachable via HEAD -> kept as-is
     - URLs not in cache and unreachable -> REMOVED from text
+    - URLs that are domain-root only (no specific path) -> FLAGGED as generic
     """
     cached_urls = _get_cached_urls()
     removed_count = 0
+    generic_count = 0
 
     # Pass 1: remove fake URLs inside markdown links [text](url) -> keep text only
     def _replace_md_link(m: re.Match) -> str:
@@ -126,14 +141,46 @@ def filter_fake_urls_from_report(report_text: str) -> str:
 
     report_text = _URL_BARE_PATTERN.sub(_replace_bare_url, report_text)
 
-    if removed_count > 0:
+    # Pass 3: flag generic markdown links (reachable but domain-root only)
+    def _replace_generic_md(m: re.Match) -> str:
+        nonlocal generic_count
+        url = m.group(2)
+        if _is_generic_url(url):
+            generic_count += 1
+            return m.group(1)
+        return m.group(0)
+
+    report_text = _MD_LINK_PATTERN.sub(_replace_generic_md, report_text)
+
+    # Pass 4: flag generic bare URLs
+    def _replace_generic_bare(m: re.Match) -> str:
+        nonlocal generic_count
+        url = m.group(0)
+        if _is_generic_url(url):
+            generic_count += 1
+            return "`[URL terlalu umum - tidak spesifik]`"
+        return url
+
+    report_text = _URL_BARE_PATTERN.sub(_replace_generic_bare, report_text)
+
+    if removed_count > 0 or generic_count > 0:
+        parts: list[str] = []
+        if removed_count > 0:
+            parts.append(
+                f"- **{removed_count} URL dihapus** — URL tidak ditemukan di hasil pencarian "
+                f"dan tidak dapat diakses saat diperiksa (HTTP HEAD gagal)."
+            )
+        if generic_count > 0:
+            parts.append(
+                f"- **{generic_count} URL terlalu umum** — URL hanya mengarah ke halaman utama "
+                f"domain, bukan halaman spesifik. LLM tidak boleh mencantumkan homepage "
+                f"generik sebagai sumber data."
+            )
         summary = (
             f"\n\n---\n"
-            f"**Catatan:** {removed_count} URL dihapus karena tidak lolos verifikasi: "
-            f"URL tidak ditemukan di hasil pencarian Serper **dan** tidak dapat diakses "
-            f"saat diperiksa (HTTP HEAD gagal). "
-            f"Hanya URL yang terverifikasi (berasal dari hasil pencarian atau dapat dijangkau) yang dipertahankan.\n"
-            f"---\n"
+            f"**Catatan Sumber:**\n"
+            + "\n".join(parts)
+            + "\n---\n"
         )
         report_text += summary
 
@@ -141,7 +188,6 @@ def filter_fake_urls_from_report(report_text: str) -> str:
 
 
 def check_serper_api_key() -> tuple[bool, str]:
-    """Verify Serper API key is valid and has credits remaining."""
     key = os.environ.get("SERPER_API_KEY", "")
     if not key:
         return False, "SERPER_API_KEY tidak ditemukan di environment"
@@ -150,7 +196,7 @@ def check_serper_api_key() -> tuple[bool, str]:
             "https://google.serper.dev/search",
             headers={"X-API-KEY": key, "content-type": "application/json"},
             json={"q": "test", "num": 1},
-            timeout=10,
+            timeout=SERPER_TIMEOUT,
         )
         if resp.status_code == 200:
             data = resp.json()
