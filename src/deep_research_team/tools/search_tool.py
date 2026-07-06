@@ -1,18 +1,21 @@
 import asyncio
+import concurrent.futures
 import hashlib
 import json
 import os
 import re
+import shutil
+import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from crewai.tools import tool
+from crewai.tools.base_tool import Tool
 from crewai_tools import ScrapeWebsiteTool, SerperDevTool
+from pydantic import BaseModel
 
-from deep_research_team.settings import CACHE_DIR, SERPER_TIMEOUT, URL_VALIDATE_TIMEOUT, setup_logging
+from deep_research_team.settings import CACHE_DIR, CACHE_TTL, SERPER_TIMEOUT, URL_VALIDATE_TIMEOUT, setup_logging
 
 logger = setup_logging(__name__)
 
@@ -21,13 +24,24 @@ _SEARCH_MARKER_END = "---[/SEARCH_RESULT]---"
 _URL_PATTERN = re.compile(r"https?://[^\s\)\"'\]]+")
 
 
+def clear_cache() -> None:
+    """Remove all cached search results."""
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR)
+        logger.info("Cache cleared: %s", CACHE_DIR)
+
+
 def _cache_key(query: str) -> str:
     return hashlib.md5(query.encode()).hexdigest()
 
 
-def _read_cache(key: str) -> Any | None:
+def _read_cache(key: str, ttl: int = CACHE_TTL) -> Any | None:
     path = CACHE_DIR / f"{key}.json"
     if path.exists():
+        age = time.time() - path.stat().st_mtime
+        if age > ttl:
+            path.unlink()
+            return None
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
@@ -177,8 +191,8 @@ def filter_fake_urls_from_report(report_text: str) -> str:
                 f"generik sebagai sumber data."
             )
         summary = (
-            f"\n\n---\n"
-            f"**Catatan Sumber:**\n"
+            "\n\n---\n"
+            "**Catatan Sumber:**\n"
             + "\n".join(parts)
             + "\n---\n"
         )
@@ -212,21 +226,51 @@ def check_serper_api_key() -> tuple[bool, str]:
         return False, f"Tidak bisa terhubung ke Serper API: {e}"
 
 
-def _serper_search(search_query: str) -> dict:
+def _serper_search(search_query: str, retries: int = 2, delay: float = 2.0) -> dict:
     key = _cache_key(search_query)
     cached = _read_cache(key)
     if cached:
         return cached
-    serper = SerperDevTool()
-    result = serper._run(search_query=search_query)
-    _write_cache(key, result)
-    return result
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            serper = SerperDevTool()
+            result = serper._run(search_query=search_query)
+            _write_cache(key, result)
+            return result
+        except requests.RequestException as e:
+            last_exc = e
+            logger.warning("Serper attempt %d failed (requests error: %s), retrying in %.1fs", attempt, e, delay)
+            time.sleep(delay)
+        except Exception as e:
+            last_exc = e
+            logger.error("Serper attempt %d failed (non-requests error: %s)", attempt, e)
+            raise
+    raise last_exc  # type: ignore[misc]
 
 
-@tool("Cari di Internet")
-def search_internet(query: str) -> str:
-    """Cari informasi di internet menggunakan Serper. Gunakan untuk mencari data kompetitor, harga, fitur, review, atau informasi umum tentang suatu topik. Input: query pencarian teks."""
-    result = _serper_search(query)
+class SearchInput(BaseModel):
+    query: str
+
+
+class ScrapeInput(BaseModel):
+    url: str
+
+
+class DeepSearchInput(BaseModel):
+    field: str
+
+
+def _search_internet_impl(query: str) -> str:
+    try:
+        result = _serper_search(query)
+    except Exception as e:
+        logger.error("Serper search permanently failed for %r: %s", query, e)
+        return _wrap_json_result({
+            "query": query,
+            "error": f"Gagal terhubung ke Serper API setelah beberapa percobaan: {e}",
+            "organic": [],
+        })
     organic = result.get("organic", [])
     if not organic:
         return _wrap_json_result({"query": query, "organic": [], "message": "Tidak ada hasil ditemukan."})
@@ -240,13 +284,15 @@ def search_internet(query: str) -> str:
     return _wrap_json_result(output)
 
 
-@tool("Scrape Halaman Website")
-def scrape_website(url: str) -> str:
-    """Ambil konten teks dari sebuah halaman website. Gunakan untuk mengambil data detail dari URL yang ditemukan dari hasil pencarian. Input: URL lengkap (https://...)."""
-    scraper = ScrapeWebsiteTool()
-    result = scraper._run(website_url=url)
-    text = str(result)
-    return text[:4000] if len(text) > 4000 else text
+def _scrape_website_impl(url: str) -> str:
+    try:
+        scraper = ScrapeWebsiteTool()
+        result = scraper._run(website_url=url)
+        text = str(result)
+        return text[:4000] if len(text) > 4000 else text
+    except Exception as e:
+        logger.error("Scrape website failed for %r: %s", url, e)
+        return f"Gagal mengambil konten dari {url}: {e}"
 
 
 _CURRENT_YEAR = str(datetime.now().year)
@@ -260,17 +306,31 @@ _QUERY_TEMPLATES = [
 ]
 
 
-@tool("Deep Search Kompetitor")
-def deep_search(field: str) -> str:
-    """Lakukan pencarian mendalam dengan banyak query paralel. Cocok untuk riset awal kompetitor. Input: bidang bisnis (contoh: E-commerce Fesyen)."""
+def _run_async(coro: Any) -> Any:
+    """Run coroutine safely — works with or without a running event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def _deep_search_impl(field: str) -> str:
     queries = [t.format(field=field, year=_CURRENT_YEAR) for t in _QUERY_TEMPLATES]
 
     async def _run_all() -> list[dict]:
-        loop = asyncio.get_event_loop()
-        tasks = [loop.run_in_executor(None, _serper_search, q) for q in queries]
-        return await asyncio.gather(*tasks)
+        tasks = [asyncio.to_thread(_serper_search, q) for q in queries]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        valid: list[dict] = []
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                logger.warning("Deep search query %r failed: %s", queries[i], r)
+            else:
+                valid.append(r)
+        return valid
 
-    all_results = asyncio.run(_run_all())
+    all_results = _run_async(_run_all())
 
     seen_links: set[str] = set()
     combined: list[dict] = []
@@ -296,3 +356,25 @@ def deep_search(field: str) -> str:
         "source": "serper.dev",
     }
     return _wrap_json_result(output)
+
+
+search_internet = Tool(
+    name="Cari di Internet",
+    description="Cari informasi di internet menggunakan Serper. Gunakan untuk mencari data kompetitor, harga, fitur, review, atau informasi umum tentang suatu topik. Input: query pencarian teks.",
+    args_schema=SearchInput,
+    func=_search_internet_impl,
+)
+
+scrape_website = Tool(
+    name="Scrape Halaman Website",
+    description="Ambil konten teks dari sebuah halaman website. Gunakan untuk mengambil data detail dari URL yang ditemukan dari hasil pencarian. Input: URL lengkap (https://...).",
+    args_schema=ScrapeInput,
+    func=_scrape_website_impl,
+)
+
+deep_search = Tool(
+    name="Deep Search Kompetitor",
+    description="Lakukan pencarian mendalam dengan banyak query paralel. Cocok untuk riset awal kompetitor. Input: bidang bisnis (contoh: E-commerce Fesyen).",
+    args_schema=DeepSearchInput,
+    func=_deep_search_impl,
+)

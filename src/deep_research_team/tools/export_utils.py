@@ -11,29 +11,46 @@ logger = setup_logging(__name__)
 
 _UNICODE_FONT: Optional[str] = None
 _BOLD_FONT: Optional[str] = None
+_FONT_INITIALIZED: bool = False
 
-_FONT_CANDIDATES: list[tuple[str, str]] = [
-    ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
-    ("C:\\Windows\\Fonts\\micross.ttf", "C:\\Windows\\Fonts\\micross.ttf"),
-    ("C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf"),
-    ("C:\\Windows\\Fonts\\verdana.ttf", "C:\\Windows\\Fonts\\verdanab.ttf"),
-    ("C:\\Windows\\Fonts\\tahoma.ttf", "C:\\Windows\\Fonts\\tahomabd.ttf"),
-    ("C:\\Windows\\Fonts\\calibri.ttf", "C:\\Windows\\Fonts\\calibrib.ttf"),
-    ("C:\\Windows\\Fonts\\constan.ttf", "C:\\Windows\\Fonts\\constanb.ttf"),
-]
 
-if sys.platform == "linux":
-    _FONT_CANDIDATES = [
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-        ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
-    ]
-elif sys.platform == "darwin":
-    _FONT_CANDIDATES = [
-        ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
-        ("/Library/Fonts/Helvetica.ttf", "/Library/Fonts/Helvetica Bold.ttf"),
-        (os.path.expanduser("~/Library/Fonts/Arial.ttf"), os.path.expanduser("~/Library/Fonts/Arial Bold.ttf")),
-    ]
+def _init_fonts() -> None:
+    global _UNICODE_FONT, _BOLD_FONT, _FONT_INITIALIZED
+    if _FONT_INITIALIZED:
+        return
+
+    candidates: list[tuple[str, str]]
+    if sys.platform == "linux":
+        candidates = [
+            ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+            ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+            ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
+        ]
+    elif sys.platform == "darwin":
+        candidates = [
+            ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+            ("/Library/Fonts/Helvetica.ttf", "/Library/Fonts/Helvetica Bold.ttf"),
+            (os.path.expanduser("~/Library/Fonts/Arial.ttf"), os.path.expanduser("~/Library/Fonts/Arial Bold.ttf")),
+        ]
+    else:
+        candidates = [
+            ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+            ("C:\\Windows\\Fonts\\micross.ttf", "C:\\Windows\\Fonts\\micross.ttf"),
+            ("C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf"),
+            ("C:\\Windows\\Fonts\\verdana.ttf", "C:\\Windows\\Fonts\\verdanab.ttf"),
+            ("C:\\Windows\\Fonts\\tahoma.ttf", "C:\\Windows\\Fonts\\tahomabd.ttf"),
+            ("C:\\Windows\\Fonts\\calibri.ttf", "C:\\Windows\\Fonts\\calibrib.ttf"),
+            ("C:\\Windows\\Fonts\\constan.ttf", "C:\\Windows\\Fonts\\constanb.ttf"),
+        ]
+
+    for regular, bold in candidates:
+        if os.path.exists(regular) and os.path.exists(bold):
+            _UNICODE_FONT = regular
+            _BOLD_FONT = bold if regular.lower() != bold.lower() else None
+            break
+
+    _FONT_INITIALIZED = True
+
 
 def _sanitize_for_pdf(text: str) -> str:
     """Replace smart punctuation with ASCII + keep only Windows-1252 printable."""
@@ -51,13 +68,6 @@ def _sanitize_for_pdf(text: str) -> str:
     })
     text = text.translate(_table)
     return re.sub(r'[^\t\n\r\x20-\x7E\xA0-\xFF]', '', text)
-
-for candidate, bold_candidate in _FONT_CANDIDATES:
-    if os.path.exists(candidate) and os.path.exists(bold_candidate):
-        _UNICODE_FONT = candidate
-        _BOLD_FONT = bold_candidate if candidate.lower() != bold_candidate.lower() else None
-        break
-
 
 _TABLE_CELL_RE = re.compile(r'<(td|th)([^>]*)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
 _STRIP_TAGS_RE = re.compile(r'</?(thead|tbody|tfoot)[^>]*>', re.IGNORECASE)
@@ -95,6 +105,7 @@ def md_to_pdf(md_content: str) -> bytes | None:
     cleaned = _sanitize_for_pdf(md_content)
 
     try:
+        _init_fonts()
         from fpdf import FPDF
 
         html = markdown.markdown(cleaned, extensions=["tables", "fenced_code"])

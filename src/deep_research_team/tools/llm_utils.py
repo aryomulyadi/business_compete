@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 import litellm
-from litellm.exceptions import RateLimitError, ServiceUnavailableError
+from litellm.exceptions import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError
 from crewai import LLM
 from crewai.llms.base_llm import BaseLLM
 from crewai.utilities.types import LLMMessage
@@ -18,11 +18,13 @@ logger = setup_logging(__name__)
 litellm.drop_params = True
 
 
-def _strip_cache_breakpoint(messages: list[dict]) -> None:
-    """Remove cache_breakpoint key from every message (some providers don't support it)."""
-    for msg in messages:
-        if isinstance(msg, dict):
-            msg.pop("cache_breakpoint", None)
+def _strip_cache_breakpoint(messages: list[dict]) -> list[dict]:
+    """Return messages with cache_breakpoint key removed (some providers don't support it)."""
+    return [
+        {k: v for k, v in msg.items() if k != "cache_breakpoint"}
+        if isinstance(msg, dict) else msg
+        for msg in messages
+    ]
 
 
 _original_completion = litellm.completion
@@ -31,13 +33,13 @@ _original_acompletion = litellm.acompletion
 
 def _patched_completion(*args: Any, **kwargs: Any) -> Any:
     if "messages" in kwargs:
-        _strip_cache_breakpoint(kwargs["messages"])
+        kwargs["messages"] = _strip_cache_breakpoint(kwargs["messages"])
     return _original_completion(*args, **kwargs)
 
 
 async def _patched_acompletion(*args: Any, **kwargs: Any) -> Any:
     if "messages" in kwargs:
-        _strip_cache_breakpoint(kwargs["messages"])
+        kwargs["messages"] = _strip_cache_breakpoint(kwargs["messages"])
     return await _original_acompletion(*args, **kwargs)
 
 
@@ -54,7 +56,7 @@ RETRYABLE_CODES = {429, 503}
 
 
 def _is_retryable(error: Exception) -> bool:
-    if isinstance(error, (ValueError, RateLimitError, ServiceUnavailableError)):
+    if isinstance(error, (ValueError, RateLimitError, ServiceUnavailableError, InternalServerError, APIConnectionError)):
         return True
     error_str = str(error)
     for code in RETRYABLE_CODES:
@@ -73,14 +75,26 @@ class MimoDirect:
     })
 
     def __init__(self, model: str = "mimo-v2.5-pro", max_tokens: int = 8192) -> None:
-        import openai as _openai
-
         self.model = model
         self._max_tokens = max_tokens
-        api_key = os.getenv("MIMO_API_KEY", "")
-        base_url = "https://api.xiaomimimo.com/v1"
-        self._client = _openai.OpenAI(api_key=api_key, base_url=base_url)
-        self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._client: Any = None
+        self._aclient: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            import openai as _openai
+            api_key = os.getenv("MIMO_API_KEY", "")
+            base_url = "https://api.xiaomimimo.com/v1"
+            self._client = _openai.OpenAI(api_key=api_key, base_url=base_url)
+        return self._client
+
+    def _get_aclient(self) -> Any:
+        if self._aclient is None:
+            import openai as _openai
+            api_key = os.getenv("MIMO_API_KEY", "")
+            base_url = "https://api.xiaomimimo.com/v1"
+            self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+        return self._aclient
 
     def _build_kwargs(self, kwargs: dict) -> dict:
         return {k: v for k, v in kwargs.items() if k in self._SAFE_KEYS}
@@ -88,7 +102,7 @@ class MimoDirect:
     def call(self, messages: Any, **kwargs: Any) -> str:
         safe = self._build_kwargs(kwargs)
         safe.setdefault("max_tokens", self._max_tokens)
-        response = self._client.chat.completions.create(
+        response = self._get_client().chat.completions.create(
             model=self.model, messages=messages, **safe,
         )
         content = response.choices[0].message.content
@@ -108,7 +122,7 @@ class MimoDirect:
     async def acall(self, messages: Any, **kwargs: Any) -> str:
         safe = self._build_kwargs(kwargs)
         safe.setdefault("max_tokens", self._max_tokens)
-        response = await self._aclient.chat.completions.create(
+        response = await self._get_aclient().chat.completions.create(
             model=self.model, messages=messages, **safe,
         )
         content = response.choices[0].message.content

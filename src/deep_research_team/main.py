@@ -4,6 +4,8 @@ import os
 import sys
 import warnings
 
+import argparse
+
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("LITELLM_DROP_PARAMS", "true")
 
@@ -17,7 +19,7 @@ from deep_research_team.settings import (
 )
 from deep_research_team.tools.export_utils import md_to_html, md_to_pdf
 from deep_research_team.tools.progress import ProgressCallback, reset_progress
-from deep_research_team.tools.search_tool import check_serper_api_key, filter_fake_urls_from_report
+from deep_research_team.tools.search_tool import check_serper_api_key, clear_cache, filter_fake_urls_from_report
 
 logger = setup_logging(__name__)
 
@@ -70,7 +72,7 @@ def run():
 
         if len(md_content.strip()) < 50:
             logger.warning("Report terlalu pendek (%d chars), kemungkinan analisis gagal. Skip export.", len(md_content.strip()))
-            print(f"  File report terlalu pendek — analisis mungkin gagal.")
+            print("  File report terlalu pendek — analisis mungkin gagal.")
             print(f"  Cek: {md_path}")
             print("=" * 60)
             return result
@@ -90,7 +92,7 @@ def run():
                 f.write(pdf_bytes)
             print(f"  PDF:      {pdf_path}")
         else:
-            print(f"  PDF:      (tidak tersedia, buka HTML lalu print-to-PDF)")
+            print("  PDF:      (tidak tersedia, buka HTML lalu print-to-PDF)")
 
         print(f"  Markdown: {md_path}")
         print(f"  HTML:     {html_path}")
@@ -112,7 +114,7 @@ def train():
     except IndexError:
         logger.error("train: argumen tidak lengkap. Gunakan: train <n_iterations> <filename>")
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Gagal menjalankan training")
         raise
 
@@ -123,7 +125,7 @@ def replay():
     except IndexError:
         logger.error("replay: argumen task_id tidak diberikan")
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Gagal menjalankan replay")
         raise
 
@@ -140,10 +142,15 @@ def test():
     except IndexError:
         logger.error("test: argumen tidak lengkap. Gunakan: test <n_iterations> <eval_llm>")
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Gagal menjalankan test")
         raise
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Deep Research Team")
+    parser.add_argument("--clear-cache", action="store_true", help="Hapus semua cache pencarian")
+    args, _ = parser.parse_known_args()
+    if args.clear_cache:
+        clear_cache()
     run()

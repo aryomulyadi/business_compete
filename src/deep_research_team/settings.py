@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Final
@@ -25,6 +24,7 @@ ANALYST_MAX_ITER: Final[int] = 3
 
 SERPER_TIMEOUT: Final[int] = 10
 URL_VALIDATE_TIMEOUT: Final[int] = 5
+CACHE_TTL: Final[int] = 86400  # 24 jam
 
 ENV_VARS: Final[list[str]] = [
     "GROQ_API_KEY",

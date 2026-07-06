@@ -1,5 +1,6 @@
+import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.layout import Layout
@@ -26,12 +27,22 @@ _completed_tasks: list[str] = []
 _current_agent: str | None = None
 _start_time: float | None = None
 
+_crew_result: Any = None
+_crew_error: str | None = None
+_thread_running: bool = False
+_lock = threading.Lock()
+
 
 def reset_progress() -> None:
-    _completed_tasks.clear()
-    global _current_agent, _start_time
-    _current_agent = None
-    _start_time = None
+    with _lock:
+        _completed_tasks.clear()
+        global _current_agent, _start_time
+        _current_agent = None
+        _start_time = None
+        global _crew_result, _crew_error, _thread_running
+        _crew_result = None
+        _crew_error = None
+        _thread_running = False
 
 
 def _build_progress() -> Progress:
@@ -97,6 +108,7 @@ class ProgressCallback:
         console.print(_build_layout())
 
     def finalize(self) -> None:
+        global _current_agent
         if _current_agent and _current_agent not in _completed_tasks:
             _completed_tasks.append(_current_agent)
         _current_agent = None
@@ -108,6 +120,53 @@ class ProgressCallback:
                 + Text(f"\n⏱️ Total waktu: {elapsed:.1f} detik", justify="center")
             )
         )
+
+
+def set_crew_result(result: Any) -> None:
+    """Set crew result (called from background thread)."""
+    with _lock:
+        global _crew_result, _thread_running
+        _crew_result = result
+        _thread_running = False
+
+
+def set_crew_error(error: str) -> None:
+    """Set crew error (called from background thread)."""
+    with _lock:
+        global _crew_error, _thread_running
+        _crew_error = error
+        _thread_running = False
+
+
+def get_crew_result() -> Any:
+    """Get crew result (thread-safe, called from main thread)."""
+    with _lock:
+        return _crew_result
+
+
+def get_crew_error() -> str | None:
+    """Get crew error (thread-safe)."""
+    with _lock:
+        return _crew_error
+
+
+def is_thread_running() -> bool:
+    """Check if crew thread is still running (thread-safe)."""
+    with _lock:
+        return _thread_running
+
+
+def set_thread_running(val: bool) -> None:
+    """Set running flag (thread-safe)."""
+    with _lock:
+        global _thread_running
+        _thread_running = val
+
+
+def get_status() -> tuple[str | None, list[str]]:
+    """Return (current_agent, completed_tasks) for polling by external UI (e.g. Streamlit)."""
+    with _lock:
+        return _current_agent, list(_completed_tasks)
 
 
 def progress_step_handler(step: Any) -> None:

@@ -4,17 +4,20 @@ from unittest.mock import patch
 
 import pytest
 
-try:
-    from deep_research_team.tools.search_tool import (
-        _cache_key,
-        _get_cached_urls,
-        _is_url_fake,
-        _validate_url,
-        _wrap_json_result,
-        filter_fake_urls_from_report,
-    )
-except ModuleNotFoundError:
-    pytest.skip("Missing dependencies (crewai, crewai-tools)", allow_module_level=True)
+pytest.importorskip("crewai")
+pytest.importorskip("crewai_tools")
+
+from deep_research_team.tools.search_tool import (
+    _cache_key,
+    _get_cached_urls,
+    _is_url_fake,
+    _scrape_website_impl,
+    _search_internet_impl,
+    _serper_search,
+    _validate_url,
+    _wrap_json_result,
+    filter_fake_urls_from_report,
+)
 
 
 class TestCacheKey:
@@ -171,3 +174,62 @@ class TestFilterFakeUrlsFromReport:
             result = filter_fake_urls_from_report(text)
             assert "URL terlalu umum" in result
             assert "Catatan Sumber" in result
+
+
+class TestSerperSearch:
+    @patch("deep_research_team.tools.search_tool.SerperDevTool")
+    def test_retry_on_requests_error_then_success(self, mock_serper_cls) -> None:
+        from requests.exceptions import ConnectionError as ConnErr
+        mock_instance = mock_serper_cls.return_value
+        mock_instance._run.side_effect = [
+            ConnErr("connection refused"),
+            {"organic": [{"link": "https://example.com", "title": "Test", "snippet": "desc"}]},
+        ]
+        with patch("deep_research_team.tools.search_tool._read_cache", return_value=None):
+            with patch("deep_research_team.tools.search_tool._write_cache"):
+                result = _serper_search("test query")
+        assert "organic" in result
+        assert mock_instance._run.call_count == 2
+
+    @patch("deep_research_team.tools.search_tool.SerperDevTool")
+    def test_all_retries_exhausted_raises(self, mock_serper_cls) -> None:
+        from requests.exceptions import ConnectionError as ConnErr
+        mock_instance = mock_serper_cls.return_value
+        mock_instance._run.side_effect = ConnErr("always fails")
+        with patch("deep_research_team.tools.search_tool._read_cache", return_value=None):
+            with pytest.raises(Exception, match="always fails"):
+                _serper_search("test query")
+
+
+class TestSearchInternetImpl:
+    def test_returns_wrapped_json_on_success(self) -> None:
+        fake_result = {"organic": [{"link": "https://a.com", "title": "A", "snippet": "a"}]}
+        with patch("deep_research_team.tools.search_tool._serper_search", return_value=fake_result):
+            result = _search_internet_impl("test")
+        assert "---[SEARCH_RESULT]---" in result
+
+    def test_returns_error_json_on_serper_failure(self) -> None:
+        with patch(
+            "deep_research_team.tools.search_tool._serper_search",
+            side_effect=Exception("Serper API timeout"),
+        ):
+            result = _search_internet_impl("test")
+        assert "Gagal terhubung" in result
+        assert "---[SEARCH_RESULT]---" in result
+
+
+class TestScrapeWebsiteImpl:
+    @patch("deep_research_team.tools.search_tool.ScrapeWebsiteTool")
+    def test_returns_truncated_text(self, mock_scraper_cls) -> None:
+        mock_instance = mock_scraper_cls.return_value
+        mock_instance._run.return_value = "x" * 5000
+        result = _scrape_website_impl("https://example.com")
+        assert len(result) == 4000
+
+    @patch("deep_research_team.tools.search_tool.ScrapeWebsiteTool")
+    def test_returns_error_on_exception(self, mock_scraper_cls) -> None:
+        mock_instance = mock_scraper_cls.return_value
+        mock_instance._run.side_effect = Exception("timeout")
+        result = _scrape_website_impl("https://example.com")
+        assert "Gagal mengambil konten" in result
+        assert "timeout" in result

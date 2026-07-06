@@ -5,6 +5,7 @@ from deep_research_team.settings import (
     ANALYST_MAX_ITER,
     ANALYST_MAX_TOKENS,
     CACHE_DIR,
+    CACHE_TTL,
     DB_PATH,
     ENV_VARS,
     LLM_PROVIDER_DEFAULT,
@@ -29,6 +30,7 @@ def test_settings_have_expected_values() -> None:
     assert ANALYST_MAX_ITER == 3
     assert SERPER_TIMEOUT == 10
     assert URL_VALIDATE_TIMEOUT == 5
+    assert CACHE_TTL == 86400
     assert LLM_PROVIDER_DEFAULT == "mimo"
     assert AGENTS_CONFIG == "config/agents.yaml"
     assert TASKS_CONFIG == "config/tasks.yaml"

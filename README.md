@@ -124,14 +124,38 @@ Researcher ──→ Analyst ──→ Writer
 
 Provider dapat diganti via env `LLM_PROVIDER`:
 
-| Provider | Model |
-|---|---|
-| `mimo` (default) | `mimo-v2.5-pro` via MimoDirect |
-| `groq` | `llama-3.3-70b-versatile` |
-| `deepseek` | `deepseek-chat` |
-| `gemini` | `gemini-2.5-flash` |
-| `openai` | `gpt-4o` |
-| `openai-mini` | `gpt-4o-mini` |
+| Provider | Model | Catatan |
+|---|---|---|
+| `mimo` (default) | `mimo-v2.5-pro` via MimoDirect | Gratis, sesekali empty response → auto fallback |
+| `groq` | `llama-3.3-70b-versatile` | Cepat, rate limit 6k TPM → auto retry |
+| `deepseek` | `deepseek-chat` | Stabil, murah |
+| `gemini` | `gemini-2.5-flash` | Gratis quota besar |
+| `openai` | `gpt-4o` | Bayar |
+| `openai-mini` | `gpt-4o-mini` | Murah |
+
+### Fallback Mechanism
+
+```
+Mimo API empty response
+  → ValueError raise
+  → RetryableLLM catch
+  → exponential backoff (2s, 4s, 8s)
+  → switch ke fallback (groq/llama-3.1-8b-instant)
+
+Groq rate limit
+  → RateLimitError raise
+  → RetryableLLM catch (isinstance)
+  → exponential backoff
+  → retry dengan delay semakin besar
+```
+
+### URL Pipeline
+
+```
+Serper API → cache (MD5 hash) → validate HEAD → filter_fake_urls()
+                                                      ↓
+                                           ┌─ unreachable → dihapus
+                                           └─ domain-root → flagged "terlalu umum"
 
 ## Struktur Direktori
 

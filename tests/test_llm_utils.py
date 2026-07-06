@@ -1,18 +1,17 @@
 import os
-from unittest.mock import patch
 
 import pytest
-from litellm.exceptions import RateLimitError, ServiceUnavailableError
+from litellm.exceptions import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError
 
-try:
-    from deep_research_team.tools.llm_utils import (
-        MimoDirect,
-        RetryableLLM,
-        _is_retryable,
-        get_llm,
-    )
-except ModuleNotFoundError:
-    pytest.skip("Missing dependencies (litellm, crewai)", allow_module_level=True)
+pytest.importorskip("crewai")
+pytest.importorskip("litellm")
+
+from deep_research_team.tools.llm_utils import (
+    MimoDirect,
+    RetryableLLM,
+    _is_retryable,
+    get_llm,
+)
 
 
 class TestIsRetryable:
@@ -40,6 +39,18 @@ class TestIsRetryable:
     def test_service_unavailable_via_isinstance(self) -> None:
         assert _is_retryable(ServiceUnavailableError(
             "Service is temporarily unavailable",
+            "groq", "llama-3.1-8b-instant",
+        ))
+
+    def test_internal_server_error_retryable(self) -> None:
+        assert _is_retryable(InternalServerError(
+            "Internal Server Error from Groq",
+            "groq", "llama-3.1-8b-instant",
+        ))
+
+    def test_api_connection_error_retryable(self) -> None:
+        assert _is_retryable(APIConnectionError(
+            "Connection refused by API provider",
             "groq", "llama-3.1-8b-instant",
         ))
 
