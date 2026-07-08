@@ -106,6 +106,37 @@ class TestRetryableLLM:
         assert isinstance(llm, RetryableLLM)
         assert "groq/" in llm.model
 
+    def test_get_llm_with_omniroute_provider(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        free_tcp_port: int,
+    ) -> None:
+        custom_base_url = f"http://localhost:{free_tcp_port}/v1"
+
+        monkeypatch.setenv("LLM_PROVIDER", "omniroute")
+        monkeypatch.setenv("OMNIROUTE_API_KEY", "test-key")
+        monkeypatch.setenv("OMNIROUTE_BASE_URL", custom_base_url)
+        monkeypatch.setenv("OMNIROUTE_MODEL", "auto")
+
+        llm = get_llm(max_tokens=2048)
+
+        assert isinstance(llm, RetryableLLM)
+        assert llm.model == "openai/auto"
+        assert llm._llm_kwargs["api_key"] == "test-key"
+        assert llm._llm_kwargs["base_url"] == custom_base_url
+        assert llm._llm_kwargs["max_tokens"] == 2048
+        assert llm._fallback_enabled is False
+
+    def test_get_llm_with_omniroute_provider_requires_base_url(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "omniroute")
+        monkeypatch.delenv("OMNIROUTE_BASE_URL", raising=False)
+
+        with pytest.raises(ValueError, match="OMNIROUTE_BASE_URL is required"):
+            get_llm()
+
     def test_get_llm_with_unknown_provider(self) -> None:
         os.environ["LLM_PROVIDER"] = "nonexistent"
         llm = get_llm()

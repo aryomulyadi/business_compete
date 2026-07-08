@@ -52,7 +52,10 @@ Isi file `.env`:
 | `DEEPSEEK_API_KEY` | Opsional | - | DeepSeek LLM API key |
 | `GEMINI_API_KEY` | Opsional | - | Gemini LLM API key |
 | `MIMO_API_KEY` | Opsional | - | Mimo LLM API key |
-| `LLM_PROVIDER` | Tidak | `mimo` | Provider: `mimo`, `groq`, `deepseek`, `gemini`, `openai`, `openai-mini` |
+| `OMNIROUTE_API_KEY` | Opsional | - | OmniRoute dashboard API key |
+| `OMNIROUTE_BASE_URL` | Wajib jika `LLM_PROVIDER=omniroute` | - | OmniRoute OpenAI-compatible base URL, contoh `http://localhost:<port>/v1` |
+| `OMNIROUTE_MODEL` | Opsional | `auto` | Model atau combo OmniRoute |
+| `LLM_PROVIDER` | Tidak | `mimo` | Provider: `mimo`, `groq`, `deepseek`, `gemini`, `openai`, `openai-mini`, `omniroute` |
 
 ## Cara Menjalankan
 
@@ -132,6 +135,7 @@ Provider dapat diganti via env `LLM_PROVIDER`:
 | `gemini` | `gemini-2.5-flash` | Gratis quota besar |
 | `openai` | `gpt-4o` | Bayar |
 | `openai-mini` | `gpt-4o-mini` | Murah |
+| `omniroute` | `auto` via `OMNIROUTE_BASE_URL` | OpenAI-compatible gateway; fallback internal app dimatikan agar routing ditangani OmniRoute |
 
 ### Fallback Mechanism
 

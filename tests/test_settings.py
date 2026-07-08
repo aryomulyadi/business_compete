@@ -46,7 +46,7 @@ def test_settings_paths_are_paths() -> None:
 def test_settings_paths_relative_to_project_root() -> None:
     from deep_research_team.settings import PROJECT_ROOT
     assert PROJECT_ROOT.exists()
-    assert PROJECT_ROOT.name == "compete_business_agents"
+    assert PROJECT_ROOT == Path(__file__).resolve().parent.parent
     assert OUTPUT_DIR == PROJECT_ROOT / "output"
     assert CACHE_DIR == PROJECT_ROOT / "output" / "cache"
     assert DB_PATH == PROJECT_ROOT / "output" / "history.db"
@@ -58,6 +58,9 @@ def test_env_vars_list() -> None:
     assert "DEEPSEEK_API_KEY" in ENV_VARS
     assert "MIMO_API_KEY" in ENV_VARS
     assert "GEMINI_API_KEY" in ENV_VARS
+    assert "OMNIROUTE_API_KEY" in ENV_VARS
+    assert "OMNIROUTE_BASE_URL" in ENV_VARS
+    assert "OMNIROUTE_MODEL" in ENV_VARS
 
 
 def test_log_format() -> None:

@@ -32,6 +32,9 @@ ENV_VARS: Final[list[str]] = [
     "DEEPSEEK_API_KEY",
     "MIMO_API_KEY",
     "GEMINI_API_KEY",
+    "OMNIROUTE_API_KEY",
+    "OMNIROUTE_BASE_URL",
+    "OMNIROUTE_MODEL",
 ]
 
 LLM_PROVIDER_DEFAULT: Final[str] = "mimo"

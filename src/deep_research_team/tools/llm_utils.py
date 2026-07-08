@@ -49,6 +49,7 @@ litellm.acompletion = _patched_acompletion
 
 PRIMARY_MODEL = "openai/mimo-v2.5-pro"
 FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
+OMNIROUTE_DEFAULT_MODEL = "auto"
 MAX_RETRIES = 3
 BASE_DELAY = 2.0
 
@@ -63,6 +64,24 @@ def _is_retryable(error: Exception) -> bool:
         if str(code) in error_str:
             return True
     return False
+
+
+def _env_value(name: str, default: str = "") -> str:
+    value = os.getenv(name, "").strip()
+    return value or default
+
+
+def _openai_compatible_model(model: str) -> str:
+    if model.startswith("openai/"):
+        return model
+    return f"openai/{model}"
+
+
+def _required_env_value(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise ValueError(f"{name} is required when LLM_PROVIDER=omniroute")
+    return value
 
 
 class MimoDirect:
@@ -147,24 +166,39 @@ class RetryableLLM(BaseLLM):
     fallback_model: str = FALLBACK_MODEL
 
     _llm: Any = PrivateAttr()
+    _llm_kwargs: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _fallback_enabled: bool = PrivateAttr(default=True)
+    _max_tokens: int | None = PrivateAttr(default=None)
 
     def __init__(self, **kwargs: Any) -> None:
         model = kwargs.pop("model", PRIMARY_MODEL)
         max_tokens = kwargs.pop("max_tokens", None)
+        base_url = kwargs.pop("base_url", None)
+        api_key = kwargs.pop("api_key", None)
+        fallback_enabled = kwargs.pop("fallback_enabled", True)
         provider = model.split("/")[0] if "/" in model else "openai"
         super().__init__(
             llm_type=provider,
             model=model,
             **kwargs,
         )
-        if "mimo" in model.lower():
+        self._max_tokens = max_tokens
+        self._fallback_enabled = fallback_enabled
+        if base_url:
+            self._llm_kwargs["base_url"] = base_url
+        if api_key is not None:
+            self._llm_kwargs["api_key"] = api_key
+        if max_tokens is not None:
+            self._llm_kwargs["max_tokens"] = max_tokens
+
+        if "mimo" in model.lower() and not base_url:
             raw_model = model.split("/", 1)[1] if "/" in model else model
             mimo_kwargs = {"model": raw_model}
             if max_tokens is not None:
                 mimo_kwargs["max_tokens"] = max_tokens
             self._llm = MimoDirect(**mimo_kwargs)
         else:
-            self._llm = LLM(model=model)
+            self._llm = LLM(model=model, **self._llm_kwargs)
 
     def call(
         self,
@@ -176,7 +210,9 @@ class RetryableLLM(BaseLLM):
 
         for attempt in range(MAX_RETRIES):
             try:
-                if attempt > 0:
+                if attempt > 0 and not self._fallback_enabled:
+                    logger.info("Retry attempt %d - retrying model: %s", attempt, self.model)
+                elif attempt > 0:
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
@@ -204,7 +240,9 @@ class RetryableLLM(BaseLLM):
 
         for attempt in range(MAX_RETRIES):
             try:
-                if attempt > 0:
+                if attempt > 0 and not self._fallback_enabled:
+                    logger.info("Retry attempt %d - retrying model: %s", attempt, self.model)
+                elif attempt > 0:
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
@@ -236,6 +274,17 @@ _PROVIDER_MAP = {
 def get_llm(max_tokens: int | None = None) -> BaseLLM:
     """Create a RetryableLLM instance based on LLM_PROVIDER env var."""
     provider = os.getenv("LLM_PROVIDER", "mimo").lower()
+    if provider == "omniroute":
+        kwargs: dict = {
+            "model": _openai_compatible_model(_env_value("OMNIROUTE_MODEL", OMNIROUTE_DEFAULT_MODEL)),
+            "base_url": _required_env_value("OMNIROUTE_BASE_URL"),
+            "api_key": _env_value("OMNIROUTE_API_KEY", "omniroute-local"),
+            "fallback_enabled": False,
+        }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        return RetryableLLM(**kwargs)
+
     model = _PROVIDER_MAP.get(provider, PRIMARY_MODEL)
     kwargs: dict = {"model": model}
     if max_tokens is not None:
