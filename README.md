@@ -52,6 +52,8 @@ Isi file `.env`:
 | `DEEPSEEK_API_KEY` | Opsional | - | DeepSeek LLM API key |
 | `GEMINI_API_KEY` | Opsional | - | Gemini LLM API key |
 | `MIMO_API_KEY` | Opsional | - | Mimo LLM API key |
+| `MIMO_BASE_URL` | Opsional | `https://api.xiaomimimo.com/v1` | Mimo OpenAI-compatible base URL. Untuk Token Plan gunakan base URL khusus dari Mimo |
+| `MIMO_THINKING` | Opsional | `disabled` | Mode thinking Mimo: `disabled` agar output langsung ada di `message.content`, atau `enabled` jika caller menyimpan `reasoning_content` |
 | `OMNIROUTE_API_KEY` | Opsional | - | OmniRoute dashboard API key |
 | `OMNIROUTE_BASE_URL` | Wajib jika `LLM_PROVIDER=omniroute` | - | OmniRoute OpenAI-compatible base URL, contoh `http://localhost:<port>/v1` |
 | `OMNIROUTE_MODEL` | Opsional | `auto` | Model atau combo OmniRoute |
@@ -129,7 +131,7 @@ Provider dapat diganti via env `LLM_PROVIDER`:
 
 | Provider | Model | Catatan |
 |---|---|---|
-| `mimo` (default) | `mimo-v2.5-pro` via MimoDirect | Gratis, sesekali empty response → auto fallback |
+| `mimo` (default) | `mimo-v2.5-pro` via MimoDirect | OpenAI-compatible API Xiaomi Mimo, memakai `max_completion_tokens` dan `thinking=disabled` by default |
 | `groq` | `llama-3.3-70b-versatile` | Cepat, rate limit 6k TPM → auto retry |
 | `deepseek` | `deepseek-chat` | Stabil, murah |
 | `gemini` | `gemini-2.5-flash` | Gratis quota besar |
@@ -140,8 +142,8 @@ Provider dapat diganti via env `LLM_PROVIDER`:
 ### Fallback Mechanism
 
 ```
-Mimo API empty response
-  → ValueError raise
+Mimo API retryable error
+  → ValueError / provider exception
   → RetryableLLM catch
   → exponential backoff (2s, 4s, 8s)
   → switch ke fallback (groq/llama-3.1-8b-instant)

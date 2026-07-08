@@ -31,6 +31,8 @@ ENV_VARS: Final[list[str]] = [
     "SERPER_API_KEY",
     "DEEPSEEK_API_KEY",
     "MIMO_API_KEY",
+    "MIMO_BASE_URL",
+    "MIMO_THINKING",
     "GEMINI_API_KEY",
     "OMNIROUTE_API_KEY",
     "OMNIROUTE_BASE_URL",

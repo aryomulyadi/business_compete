@@ -47,9 +47,11 @@ litellm.completion = _patched_completion
 litellm.acompletion = _patched_acompletion
 
 
-PRIMARY_MODEL = "openai/mimo-v2.5-pro"
+PRIMARY_MODEL = "mimo-v2.5-pro"
 FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
 OMNIROUTE_DEFAULT_MODEL = "auto"
+MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
+MIMO_DEFAULT_THINKING_TYPE = "disabled"
 MAX_RETRIES = 3
 BASE_DELAY = 2.0
 
@@ -88,39 +90,50 @@ class MimoDirect:
     """Direct Mimo API caller — bypasses LiteLLM to avoid unsupported params."""
 
     _SAFE_KEYS = frozenset({
-        "temperature", "max_tokens", "top_p",
+        "temperature", "max_completion_tokens", "top_p",
         "stream", "stop", "frequency_penalty", "presence_penalty",
         "response_format", "n",
     })
 
-    def __init__(self, model: str = "mimo-v2.5-pro", max_tokens: int = 8192) -> None:
+    def __init__(self, model: str = PRIMARY_MODEL, max_tokens: int = 8192) -> None:
         self.model = model
         self._max_tokens = max_tokens
         self._client: Any = None
         self._aclient: Any = None
+        self._base_url = _env_value("MIMO_BASE_URL", MIMO_DEFAULT_BASE_URL)
+        self._thinking_type = _env_value("MIMO_THINKING", MIMO_DEFAULT_THINKING_TYPE).lower()
 
     def _get_client(self) -> Any:
         if self._client is None:
             import openai as _openai
             api_key = os.getenv("MIMO_API_KEY", "")
-            base_url = "https://api.xiaomimimo.com/v1"
-            self._client = _openai.OpenAI(api_key=api_key, base_url=base_url)
+            self._client = _openai.OpenAI(api_key=api_key, base_url=self._base_url)
         return self._client
 
     def _get_aclient(self) -> Any:
         if self._aclient is None:
             import openai as _openai
             api_key = os.getenv("MIMO_API_KEY", "")
-            base_url = "https://api.xiaomimimo.com/v1"
-            self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+            self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=self._base_url)
         return self._aclient
 
     def _build_kwargs(self, kwargs: dict) -> dict:
-        return {k: v for k, v in kwargs.items() if k in self._SAFE_KEYS}
+        safe = {k: v for k, v in kwargs.items() if k in self._SAFE_KEYS}
+        if "max_tokens" in kwargs and "max_completion_tokens" not in safe:
+            safe["max_completion_tokens"] = kwargs["max_tokens"]
+        extra_body = dict(kwargs["extra_body"]) if isinstance(kwargs.get("extra_body"), dict) else {}
+        thinking = kwargs.get("thinking")
+        if self._thinking_type in {"enabled", "disabled"}:
+            thinking = thinking or {"type": self._thinking_type}
+        if thinking is not None:
+            extra_body["thinking"] = thinking
+        if extra_body:
+            safe["extra_body"] = extra_body
+        return safe
 
     def call(self, messages: Any, **kwargs: Any) -> str:
         safe = self._build_kwargs(kwargs)
-        safe.setdefault("max_tokens", self._max_tokens)
+        safe.setdefault("max_completion_tokens", self._max_tokens)
         response = self._get_client().chat.completions.create(
             model=self.model, messages=messages, **safe,
         )
@@ -140,7 +153,7 @@ class MimoDirect:
 
     async def acall(self, messages: Any, **kwargs: Any) -> str:
         safe = self._build_kwargs(kwargs)
-        safe.setdefault("max_tokens", self._max_tokens)
+        safe.setdefault("max_completion_tokens", self._max_tokens)
         response = await self._get_aclient().chat.completions.create(
             model=self.model, messages=messages, **safe,
         )
@@ -176,7 +189,8 @@ class RetryableLLM(BaseLLM):
         base_url = kwargs.pop("base_url", None)
         api_key = kwargs.pop("api_key", None)
         fallback_enabled = kwargs.pop("fallback_enabled", True)
-        provider = model.split("/")[0] if "/" in model else "openai"
+        is_mimo_model = "mimo" in model.lower() and not base_url
+        provider = "mimo" if is_mimo_model else model.split("/")[0] if "/" in model else "openai"
         super().__init__(
             llm_type=provider,
             model=model,
@@ -191,8 +205,8 @@ class RetryableLLM(BaseLLM):
         if max_tokens is not None:
             self._llm_kwargs["max_tokens"] = max_tokens
 
-        if "mimo" in model.lower() and not base_url:
-            raw_model = model.split("/", 1)[1] if "/" in model else model
+        if is_mimo_model:
+            raw_model = model.removeprefix("openai/")
             mimo_kwargs = {"model": raw_model}
             if max_tokens is not None:
                 mimo_kwargs["max_tokens"] = max_tokens
@@ -267,7 +281,7 @@ _PROVIDER_MAP = {
     "gemini": "gemini/gemini-2.5-flash",
     "openai": "gpt-4o",
     "openai-mini": "gpt-4o-mini",
-    "mimo": "openai/mimo-v2.5-pro",
+    "mimo": PRIMARY_MODEL,
 }
 
 

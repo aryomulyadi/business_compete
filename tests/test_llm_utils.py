@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 import pytest
 from litellm.exceptions import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError
@@ -70,25 +71,81 @@ class TestMimoDirect:
             "another_bad": 123,
         })
         assert "temperature" in kwargs
-        assert "max_tokens" in kwargs
+        assert "max_completion_tokens" in kwargs
+        assert "max_tokens" not in kwargs
+        assert kwargs["max_completion_tokens"] == 100
         assert "bad_param" not in kwargs
         assert "another_bad" not in kwargs
 
     def test_build_kwargs_sets_defaults(self) -> None:
         mimo = MimoDirect(max_tokens=2048)
         kwargs = mimo._build_kwargs({})
-        assert "max_tokens" not in kwargs  # doesn't mutate input
+        assert "max_completion_tokens" not in kwargs  # doesn't mutate input
         safe = mimo._build_kwargs(kwargs)
-        safe.setdefault("max_tokens", mimo._max_tokens)
+        safe.setdefault("max_completion_tokens", mimo._max_tokens)
         kwargs2 = mimo._build_kwargs({})
-        kwargs2.setdefault("max_tokens", mimo._max_tokens)
-        assert kwargs2["max_tokens"] == 2048
+        kwargs2.setdefault("max_completion_tokens", mimo._max_tokens)
+        assert kwargs2["max_completion_tokens"] == 2048
+
+    def test_build_kwargs_disables_thinking_by_default(self) -> None:
+        mimo = MimoDirect()
+        kwargs = mimo._build_kwargs({})
+        assert kwargs["extra_body"]["thinking"] == {"type": "disabled"}
+
+    def test_build_kwargs_preserves_explicit_thinking(self) -> None:
+        mimo = MimoDirect()
+        kwargs = mimo._build_kwargs({"thinking": {"type": "enabled"}})
+        assert kwargs["extra_body"]["thinking"] == {"type": "enabled"}
+
+    def test_build_kwargs_preserves_existing_extra_body(self) -> None:
+        mimo = MimoDirect()
+        kwargs = mimo._build_kwargs({"extra_body": {"custom": True}})
+        assert kwargs["extra_body"] == {
+            "custom": True,
+            "thinking": {"type": "disabled"},
+        }
+
+    def test_call_sends_mimo_chat_completion_payload(self) -> None:
+        class FakeCompletions:
+            def __init__(self) -> None:
+                self.kwargs = {}
+
+            def create(self, **kwargs: object) -> object:
+                self.kwargs = kwargs
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(message=SimpleNamespace(content="ok"), finish_reason="stop")],
+                    id="fake-id",
+                    model=kwargs["model"],
+                )
+
+        class FakeChat:
+            def __init__(self) -> None:
+                self.completions = FakeCompletions()
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.chat = FakeChat()
+
+        mimo = MimoDirect(max_tokens=2048)
+        fake = FakeClient()
+        mimo._client = fake
+
+        result = mimo.call([{"role": "user", "content": "hi"}])
+
+        params = fake.chat.completions.kwargs
+        assert result == "ok"
+        assert params["model"] == "mimo-v2.5-pro"
+        assert params["max_completion_tokens"] == 2048
+        assert "max_tokens" not in params
+        assert params["extra_body"]["thinking"] == {"type": "disabled"}
 
 
 class TestRetryableLLM:
     def test_init_with_mimo_model(self) -> None:
         llm = RetryableLLM(model="openai/mimo-test")
         assert hasattr(llm, "_llm")
+        assert llm.model == "openai/mimo-test"
+        assert llm._llm.model == "mimo-test"
 
     def test_init_with_groq_model(self) -> None:
         llm = RetryableLLM(model="groq/llama-3.1-8b-instant")
@@ -99,6 +156,7 @@ class TestRetryableLLM:
             del os.environ["LLM_PROVIDER"]
         llm = get_llm(max_tokens=4096)
         assert isinstance(llm, RetryableLLM)
+        assert llm.model == "mimo-v2.5-pro"
 
     def test_get_llm_with_provider(self) -> None:
         os.environ["LLM_PROVIDER"] = "groq"

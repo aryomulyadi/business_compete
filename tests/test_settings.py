@@ -57,6 +57,8 @@ def test_env_vars_list() -> None:
     assert "SERPER_API_KEY" in ENV_VARS
     assert "DEEPSEEK_API_KEY" in ENV_VARS
     assert "MIMO_API_KEY" in ENV_VARS
+    assert "MIMO_BASE_URL" in ENV_VARS
+    assert "MIMO_THINKING" in ENV_VARS
     assert "GEMINI_API_KEY" in ENV_VARS
     assert "OMNIROUTE_API_KEY" in ENV_VARS
     assert "OMNIROUTE_BASE_URL" in ENV_VARS
