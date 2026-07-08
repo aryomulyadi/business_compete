@@ -1,17 +1,24 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import random
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import litellm
 from litellm.exceptions import APIConnectionError, InternalServerError, RateLimitError, ServiceUnavailableError
 from crewai import LLM
 from crewai.llms.base_llm import BaseLLM
 from crewai.utilities.types import LLMMessage
-from pydantic import PrivateAttr
+from pydantic import BaseModel, PrivateAttr
 
 from deep_research_team.settings import setup_logging
+
+if TYPE_CHECKING:
+    from crewai.agents.agent_builder.base_agent import BaseAgent
+    from crewai.task import Task
+    from crewai.tools.base_tool import BaseTool
 
 logger = setup_logging(__name__)
 
@@ -117,12 +124,12 @@ class MimoDirect:
             self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=self._base_url)
         return self._aclient
 
-    def _build_kwargs(self, kwargs: dict) -> dict:
-        safe = {k: v for k, v in kwargs.items() if k in self._SAFE_KEYS}
-        if "max_tokens" in kwargs and "max_completion_tokens" not in safe:
-            safe["max_completion_tokens"] = kwargs["max_tokens"]
-        extra_body = dict(kwargs["extra_body"]) if isinstance(kwargs.get("extra_body"), dict) else {}
-        thinking = kwargs.get("thinking")
+    def _build_kwargs(self, call_options: dict[str, Any]) -> dict[str, Any]:
+        safe = {k: v for k, v in call_options.items() if k in self._SAFE_KEYS}
+        if "max_tokens" in call_options and "max_completion_tokens" not in safe:
+            safe["max_completion_tokens"] = call_options["max_tokens"]
+        extra_body = dict(call_options["extra_body"]) if isinstance(call_options.get("extra_body"), dict) else {}
+        thinking = call_options.get("thinking")
         if self._thinking_type in {"enabled", "disabled"}:
             thinking = thinking or {"type": self._thinking_type}
         if thinking is not None:
@@ -131,8 +138,8 @@ class MimoDirect:
             safe["extra_body"] = extra_body
         return safe
 
-    def call(self, messages: Any, **kwargs: Any) -> str:
-        safe = self._build_kwargs(kwargs)
+    def call(self, messages: Any, **call_options: Any) -> str:
+        safe = self._build_kwargs(call_options)
         safe.setdefault("max_completion_tokens", self._max_tokens)
         response = self._get_client().chat.completions.create(
             model=self.model, messages=messages, **safe,
@@ -151,8 +158,8 @@ class MimoDirect:
             )
         return content
 
-    async def acall(self, messages: Any, **kwargs: Any) -> str:
-        safe = self._build_kwargs(kwargs)
+    async def acall(self, messages: Any, **call_options: Any) -> str:
+        safe = self._build_kwargs(call_options)
         safe.setdefault("max_completion_tokens", self._max_tokens)
         response = await self._get_aclient().chat.completions.create(
             model=self.model, messages=messages, **safe,
@@ -183,18 +190,18 @@ class RetryableLLM(BaseLLM):
     _fallback_enabled: bool = PrivateAttr(default=True)
     _max_tokens: int | None = PrivateAttr(default=None)
 
-    def __init__(self, **kwargs: Any) -> None:
-        model = kwargs.pop("model", PRIMARY_MODEL)
-        max_tokens = kwargs.pop("max_tokens", None)
-        base_url = kwargs.pop("base_url", None)
-        api_key = kwargs.pop("api_key", None)
-        fallback_enabled = kwargs.pop("fallback_enabled", True)
+    def __init__(self, **config: Any) -> None:
+        model = config.pop("model", PRIMARY_MODEL)
+        max_tokens = config.pop("max_tokens", None)
+        base_url = config.pop("base_url", None)
+        api_key = config.pop("api_key", None)
+        fallback_enabled = config.pop("fallback_enabled", True)
         is_mimo_model = "mimo" in model.lower() and not base_url
         provider = "mimo" if is_mimo_model else model.split("/")[0] if "/" in model else "openai"
         super().__init__(
             llm_type=provider,
             model=model,
-            **kwargs,
+            **config,
         )
         self._max_tokens = max_tokens
         self._fallback_enabled = fallback_enabled
@@ -217,8 +224,13 @@ class RetryableLLM(BaseLLM):
     def call(
         self,
         messages: str | list[LLMMessage],
-        **kwargs: Any,
-    ) -> Any:
+        tools: list[dict[str, BaseTool]] | None = None,
+        callbacks: list[Any] | None = None,
+        available_functions: dict[str, Any] | None = None,
+        from_task: Task | None = None,
+        from_agent: BaseAgent | None = None,
+        response_model: type[BaseModel] | None = None,
+    ) -> str | Any:
         last_error = None
         fallback = self.fallback_model
 
@@ -230,7 +242,15 @@ class RetryableLLM(BaseLLM):
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
-                return self._llm.call(messages, **kwargs)
+                return self._llm.call(
+                    messages=messages,
+                    tools=tools,
+                    callbacks=callbacks,
+                    available_functions=available_functions,
+                    from_task=from_task,
+                    from_agent=from_agent,
+                    response_model=response_model,
+                )
             except Exception as e:
                 last_error = e
                 if not _is_retryable(e):
@@ -247,8 +267,13 @@ class RetryableLLM(BaseLLM):
     async def acall(
         self,
         messages: str | list[LLMMessage],
-        **kwargs: Any,
-    ) -> Any:
+        tools: list[dict[str, BaseTool]] | None = None,
+        callbacks: list[Any] | None = None,
+        available_functions: dict[str, Any] | None = None,
+        from_task: Task | None = None,
+        from_agent: BaseAgent | None = None,
+        response_model: type[BaseModel] | None = None,
+    ) -> str | Any:
         last_error = None
         fallback = self.fallback_model
 
@@ -260,7 +285,15 @@ class RetryableLLM(BaseLLM):
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
                     self._llm = LLM(model=fallback)
                     self.model = self._llm.model
-                return await self._llm.acall(messages, **kwargs)
+                return await self._llm.acall(
+                    messages=messages,
+                    tools=tools,
+                    callbacks=callbacks,
+                    available_functions=available_functions,
+                    from_task=from_task,
+                    from_agent=from_agent,
+                    response_model=response_model,
+                )
             except Exception as e:
                 last_error = e
                 if not _is_retryable(e):
@@ -289,18 +322,18 @@ def get_llm(max_tokens: int | None = None) -> BaseLLM:
     """Create a RetryableLLM instance based on LLM_PROVIDER env var."""
     provider = os.getenv("LLM_PROVIDER", "mimo").lower()
     if provider == "omniroute":
-        kwargs: dict = {
+        omniroute_kwargs: dict[str, Any] = {
             "model": _openai_compatible_model(_env_value("OMNIROUTE_MODEL", OMNIROUTE_DEFAULT_MODEL)),
             "base_url": _required_env_value("OMNIROUTE_BASE_URL"),
             "api_key": _env_value("OMNIROUTE_API_KEY", "omniroute-local"),
             "fallback_enabled": False,
         }
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
-        return RetryableLLM(**kwargs)
+            omniroute_kwargs["max_tokens"] = max_tokens
+        return RetryableLLM(**omniroute_kwargs)
 
     model = _PROVIDER_MAP.get(provider, PRIMARY_MODEL)
-    kwargs: dict = {"model": model}
+    provider_kwargs: dict[str, Any] = {"model": model}
     if max_tokens is not None:
-        kwargs["max_tokens"] = max_tokens
-    return RetryableLLM(**kwargs)
+        provider_kwargs["max_tokens"] = max_tokens
+    return RetryableLLM(**provider_kwargs)
