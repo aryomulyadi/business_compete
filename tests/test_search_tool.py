@@ -57,15 +57,15 @@ class TestValidateUrl:
     def test_invalid_url_returns_false(self) -> None:
         assert not _validate_url("not a url", timeout=1)
 
-    @patch("deep_research_team.tools.search_tool.requests.head")
-    def test_reachable_url(self, mock_head) -> None:
-        mock_head.return_value.status_code = 200
+    @patch("deep_research_team.tools.search_tool.requests.request")
+    def test_reachable_url(self, mock_request) -> None:
+        mock_request.return_value.status_code = 200
         assert _validate_url("https://example.com", timeout=1)
 
-    @patch("deep_research_team.tools.search_tool.requests.head")
-    def test_unreachable_url(self, mock_head) -> None:
+    @patch("deep_research_team.tools.search_tool.requests.request")
+    def test_unreachable_url(self, mock_request) -> None:
         from requests import RequestException
-        mock_head.side_effect = RequestException("timeout")
+        mock_request.side_effect = RequestException("timeout")
         assert not _validate_url("https://example.com", timeout=1)
 
 

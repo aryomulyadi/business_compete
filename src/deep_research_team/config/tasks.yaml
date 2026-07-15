@@ -29,7 +29,7 @@ research_task:
   agent: researcher
 
 analysis_task:
-  description: >
+  description: |
     Berdasarkan data mentah dari Researcher, lakukan analisis berikut:
     1. Buat Analisis SWOT (Strengths, Weaknesses, Opportunities, Threats)
     untuk bisnis klien di bidang {business_field}
@@ -40,6 +40,12 @@ analysis_task:
     Environmental, Legal) yang relevan
     4. Buat tabel perbandingan fitur dan harga antar kompetitor
     5. Berikan strategi positioning yang membedakan klien dari kompetitor
+    5a. Sarankan 3–5 opsi nama brand yang strategis untuk {business_field}.
+        Untuk SETIAP opsi, jelaskan:
+        - Makna literal setiap kata/suku kata
+        - Filosofi dan pesan yang ingin disampaikan
+        - Target pasar yang dituju
+        - Positioning yang ingin dicapai
     6. Identifikasi celah pasar (market gap) yang bisa dimanfaatkan
 
     Gunakan data yang sudah dikumpulkan, jangan berasumsi tanpa data.
@@ -63,10 +69,12 @@ writing_task:
     ## 5. Analisis SWOT
     ## 6. Porter's Five Forces
     ## 7. Analisis PESTEL
-    ## 8. Strategi Positioning
-    ## 9. Market Gap & Rekomendasi
-    ## 10. Kesimpulan
-    ## 11. Daftar Sumber (URL)
+    ## 8. Brand Strategy & Naming
+      - Opsi nama brand strategis (dengan makna, filosofi, target pasar)
+    ## 9. Strategi Positioning
+    ## 10. Market Gap & Rekomendasi
+    ## 11. Kesimpulan
+    ## 12. Daftar Sumber (URL)
 
     Tulis dalam Bahasa Indonesia yang profesional, rapi, dan actionable.
 

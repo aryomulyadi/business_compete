@@ -55,14 +55,19 @@ def _write_cache(key: str, data: Any) -> None:
 
 
 def _validate_url(url: str, timeout: int = URL_VALIDATE_TIMEOUT) -> bool:
-    """Check if a URL is reachable via HEAD request."""
+    """Check if a URL is reachable via HEAD request, fallback to GET if HEAD fails."""
     if not url or not url.startswith("http"):
         return False
-    try:
-        resp = requests.head(url, timeout=timeout, allow_redirects=True)
-        return resp.status_code < 500
-    except requests.RequestException:
-        return False
+    for method in ("HEAD", "GET"):
+        try:
+            resp = requests.request(method, url, timeout=timeout, allow_redirects=True)
+            if method == "HEAD" and resp.status_code < 400:
+                return True
+            if method == "GET" and resp.status_code < 400:
+                return True
+        except requests.RequestException:
+            continue
+    return False
 
 
 def _validate_organic_results(organic: list[dict]) -> list[dict]:
@@ -99,13 +104,19 @@ def _get_cached_urls() -> set[str]:
 
 
 def _is_generic_url(url: str) -> bool:
-    """Check if URL is too generic (domain root or home page only)."""
+    """Check if URL is too generic (domain root or home page only).
+
+    A URL is considered generic if it has no path and no meaningful query
+    parameters (e.g., search queries like ?q=... are considered specific).
+    Single-segment paths (e.g., /pricing, /products) with no query are
+    still considered specific — they point to a meaningful page.
+    """
     parsed = urlparse(url)
     path = parsed.path.rstrip("/")
     if not path:
-        return True
+        return not parsed.query
     segments = [s for s in path.split("/") if s and not s.startswith("#")]
-    return len(segments) <= 1
+    return len(segments) <= 1 and not parsed.query
 
 
 def _is_url_fake(url: str, cached_urls: set[str]) -> bool:

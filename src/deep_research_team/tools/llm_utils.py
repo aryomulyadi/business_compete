@@ -55,7 +55,7 @@ litellm.acompletion = _patched_acompletion
 
 
 PRIMARY_MODEL = "mimo-v2.5-pro"
-FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
+FALLBACK_MODEL = "groq/llama-3.3-70b-versatile"
 OMNIROUTE_DEFAULT_MODEL = "auto"
 MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 MIMO_DEFAULT_THINKING_TYPE = "disabled"
@@ -68,10 +68,12 @@ RETRYABLE_CODES = {429, 503}
 def _is_retryable(error: Exception) -> bool:
     if isinstance(error, (ValueError, RateLimitError, ServiceUnavailableError, InternalServerError, APIConnectionError)):
         return True
-    error_str = str(error)
+    error_str = str(error).lower()
     for code in RETRYABLE_CODES:
         if str(code) in error_str:
             return True
+    if "timed out" in error_str or "timeout" in error_str:
+        return True
     return False
 
 
@@ -99,7 +101,7 @@ class MimoDirect:
     _SAFE_KEYS = frozenset({
         "temperature", "max_completion_tokens", "top_p",
         "stream", "stop", "frequency_penalty", "presence_penalty",
-        "response_format", "n",
+        "response_format", "n", "tools", "tool_choice", "parallel_tool_calls",
     })
 
     def __init__(self, model: str = PRIMARY_MODEL, max_tokens: int = 8192) -> None:
@@ -114,14 +116,14 @@ class MimoDirect:
         if self._client is None:
             import openai as _openai
             api_key = os.getenv("MIMO_API_KEY", "")
-            self._client = _openai.OpenAI(api_key=api_key, base_url=self._base_url)
+            self._client = _openai.OpenAI(api_key=api_key, base_url=self._base_url, timeout=120)
         return self._client
 
     def _get_aclient(self) -> Any:
         if self._aclient is None:
             import openai as _openai
             api_key = os.getenv("MIMO_API_KEY", "")
-            self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=self._base_url)
+            self._aclient = _openai.AsyncOpenAI(api_key=api_key, base_url=self._base_url, timeout=120)
         return self._aclient
 
     def _build_kwargs(self, call_options: dict[str, Any]) -> dict[str, Any]:
@@ -240,7 +242,10 @@ class RetryableLLM(BaseLLM):
                     logger.info("Retry attempt %d - retrying model: %s", attempt, self.model)
                 elif attempt > 0:
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
-                    self._llm = LLM(model=fallback)
+                    fb_kwargs = {"model": fallback}
+                    if self._max_tokens is not None:
+                        fb_kwargs["max_tokens"] = self._max_tokens
+                    self._llm = LLM(**fb_kwargs)
                     self.model = self._llm.model
                 return self._llm.call(
                     messages=messages,
@@ -283,7 +288,10 @@ class RetryableLLM(BaseLLM):
                     logger.info("Retry attempt %d - retrying model: %s", attempt, self.model)
                 elif attempt > 0:
                     logger.info("Retry attempt %d — switching to fallback: %s", attempt, fallback)
-                    self._llm = LLM(model=fallback)
+                    fb_kwargs = {"model": fallback}
+                    if self._max_tokens is not None:
+                        fb_kwargs["max_tokens"] = self._max_tokens
+                    self._llm = LLM(**fb_kwargs)
                     self.model = self._llm.model
                 return await self._llm.acall(
                     messages=messages,

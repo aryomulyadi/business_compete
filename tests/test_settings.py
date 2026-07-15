@@ -29,7 +29,7 @@ def test_settings_have_expected_values() -> None:
     assert RESEARCHER_MAX_ITER == 8
     assert ANALYST_MAX_ITER == 3
     assert SERPER_TIMEOUT == 10
-    assert URL_VALIDATE_TIMEOUT == 5
+    assert URL_VALIDATE_TIMEOUT == 10
     assert CACHE_TTL == 86400
     assert LLM_PROVIDER_DEFAULT == "mimo"
     assert AGENTS_CONFIG == "config/agents.yaml"

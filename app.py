@@ -2,19 +2,15 @@
 
 import os
 import re
-import sqlite3
 import threading
 import time
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
 
 from dotenv import load_dotenv
 import streamlit as st
 
-from deep_research_team.settings import DB_PATH, ENV_VARS, REPORT_FILE, setup_logging
+from deep_research_team.settings import ENV_VARS, REPORT_FILE, setup_logging
 from deep_research_team.crew import DeepResearchCrew
-from deep_research_team.tools.export_utils import md_to_html, md_to_pdf
+from deep_research_team.tools.db_utils import init_db, save_history, update_history
 from deep_research_team.tools.progress import (
     _STEPS as AGENT_STEPS,
     get_crew_error,
@@ -40,7 +36,7 @@ _start_lock = threading.Lock()
 
 st.set_page_config(
     page_title="Deep Research Team",
-    page_icon="🔍",
+    page_icon="\U0001f50d",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -58,150 +54,24 @@ h2 {font-size: 1.3rem !important; font-weight: 600 !important;}
 div[data-testid="stSidebar"] > div:first-child {
     padding-top: 1rem; padding-bottom: 1rem;
 }
-.history-card {
-    border: 1px solid rgba(128,128,128,0.2);
-    border-radius: 8px;
-    padding: 0.6rem 0.8rem;
-    margin-bottom: 0.4rem;
-    transition: border-color 0.2s;
-}
-.history-card:hover {border-color: rgba(128,128,128,0.5);}
-.history-status {font-size: 0.75rem; opacity: 0.7;}
-.history-field {font-weight: 600; font-size: 0.9rem;}
-.history-date {font-size: 0.7rem; opacity: 0.5;}
-.stButton > button {width: 100%; font-weight: 600;}
+.stButton > button {font-weight: 600;}
 </style>
 """
 
 st.markdown(_CSS, unsafe_allow_html=True)
 
-
-def _strip_code_fence(text: str) -> str:
-    """Remove surrounding ```markdown ... ``` fence if present."""
-    return re.sub(
-        r'^```(?:markdown)?\s*\n(.*?)\n```\s*$',
-        r'\1',
-        text.strip(),
-        count=1,
-        flags=re.DOTALL,
-    )
-
-
-def _init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            business_field TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'running',
-            created_at TEXT NOT NULL,
-            report_path TEXT,
-            error TEXT
-        )
-    """
-    )
-    conn.commit()
-    conn.close()
-
-
-def _prune_history(max_rows: int = 100) -> None:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        "DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY id DESC LIMIT ?)",
-        (max_rows,),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _save_history(field: str, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> int:
-    conn = sqlite3.connect(str(DB_PATH))
-    cur = conn.execute(
-        "INSERT INTO history (business_field, status, created_at, report_path, error) VALUES (?, ?, ?, ?, ?)",
-        (field, status, datetime.now().isoformat(), report_path, error),
-    )
-    conn.commit()
-    row_id = cur.lastrowid
-    conn.close()
-    _prune_history()
-    return row_id
-
-
-def _update_history(row_id: int, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> None:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        "UPDATE history SET status=?, report_path=COALESCE(?, report_path), error=? WHERE id=?",
-        (status, report_path, error, row_id),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _get_history(limit: int = 20) -> list[dict[str, Any]]:
-    conn = sqlite3.connect(str(DB_PATH))
-    rows = conn.execute(
-        "SELECT id, business_field, status, created_at, report_path, error FROM history ORDER BY id DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
-    conn.close()
-    return [
-        {"id": r[0], "field": r[1], "status": r[2],
-         "created_at": r[3], "report_path": r[4], "error": r[5]}
-        for r in rows
-    ]
-
-
-_init_db()
+init_db()
 
 ok, msg = check_serper_api_key()
 if not ok:
-    st.warning(f"⚠️ Serper API: {msg}. Pencarian mungkin gagal dan data bisa tidak akurat.")
+    st.warning(f"Serper API: {msg}. Pencarian mungkin gagal dan data bisa tidak akurat.")
 
 st.title("Deep Research Team")
 st.markdown(
     '<p style="margin-top: -0.5rem; opacity: 0.6; font-size: 0.95rem;">'
-    "Analisis kompetitor bisnis dengan AI — SWOT, Five Forces, PESTEL</p>",
+    "Analisis kompetitor bisnis dengan AI - SWOT, Five Forces, PESTEL</p>",
     unsafe_allow_html=True,
 )
-
-with st.sidebar:
-    st.markdown("### Riwayat Analisis")
-    history = _get_history(10)
-    if not history:
-        st.caption("Belum ada riwayat.")
-    else:
-        for item in history:
-            status_icon = {"completed": "✅", "running": "⏳", "failed": "❌"}.get(item["status"], "❓")
-            st.markdown(
-                f'<div class="history-card">'
-                f'<div class="history-field">{status_icon} {item["field"]}</div>'
-                f'<div class="history-status">{item["status"]}</div>'
-                f'<div class="history-date">{item["created_at"][:16]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if item["report_path"] and Path(item["report_path"]).exists() and item["status"] == "completed":
-                with open(item["report_path"], "r", encoding="utf-8") as f:
-                    md_content = f.read()
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.download_button(
-                        ".md", data=md_content,
-                        file_name=Path(item["report_path"]).name,
-                        mime="text/markdown",
-                        key=f"side_md_{item['id']}",
-                    )
-                with col_b:
-                    pdf_bytes = md_to_pdf(md_content)
-                    if pdf_bytes:
-                        st.download_button(
-                            ".pdf", data=pdf_bytes,
-                            file_name=Path(item["report_path"]).with_suffix(".pdf").name,
-                            mime="application/pdf",
-                            key=f"side_pdf_{item['id']}",
-                        )
 
 col_input, col_btn = st.columns([3, 1])
 with col_input:
@@ -217,7 +87,6 @@ with col_btn:
 
 status_placeholder = st.empty()
 progress_placeholder = st.empty()
-result_placeholder = st.container()
 
 if run_clicked and business_field:
     field_clean = business_field.strip()[:200]
@@ -231,7 +100,7 @@ if run_clicked and business_field:
             st.stop()
 
         reset_progress()
-        row_id = _save_history(field_clean, "running")
+        row_id = save_history(field_clean, "running")
         st.session_state.row_id = row_id
         st.session_state.field_clean = field_clean
         set_thread_running(True)
@@ -248,7 +117,6 @@ if run_clicked and business_field:
         threading.Thread(target=_target, daemon=True).start()
         st.rerun()
 
-# --- Polling / display ---
 if is_thread_running():
     field_clean = st.session_state.get("field_clean", "")
     if not field_clean:
@@ -262,105 +130,71 @@ if is_thread_running():
 
     if current_agent:
         progress_placeholder.progress(
-            min(pct, 99), text=f"⏳ {current_agent} — {done}/{total} selesai"
+            min(pct, 99), text=f"{current_agent} - {done}/{total} selesai"
         )
     else:
-        progress_placeholder.progress(min(pct, 99), text=f"Menganalisis **{field_clean}**...")
+        progress_placeholder.progress(
+            min(pct, 99), text=f"Menganalisis {field_clean}..."
+        )
 
-    status_placeholder.info(f"Menganalisis **{field_clean}**...")
+    status_placeholder.info(f"Menganalisis {field_clean}...")
     time.sleep(0.5)
     st.rerun()
 
 elif get_crew_error() is not None:
-    row_id: int | None = st.session_state.get("row_id")
-    field_clean: str = st.session_state.get("field_clean", "")
+    row_id = st.session_state.get("row_id")
+    field_clean = st.session_state.get("field_clean", "")
     error_msg = get_crew_error()
     if row_id is not None:
-        _update_history(row_id, "failed", error=error_msg)
+        update_history(row_id, "failed", error=error_msg)
     status_placeholder.error(f"Gagal: {error_msg}")
     progress_placeholder.progress(0, text="Gagal")
-    if st.button("🔄 Coba Lagi", type="secondary"):
+    if st.button("Coba Lagi", type="secondary"):
         for key in ("row_id", "field_clean"):
             st.session_state.pop(key, None)
         st.rerun()
 
 elif get_crew_result() is not None:
-    row_id: int | None = st.session_state.get("row_id")
-    field_clean: str = st.session_state.get("field_clean", "")
+    row_id = st.session_state.get("row_id")
+    field_clean = st.session_state.get("field_clean", "")
 
     if row_id is not None:
-        _update_history(row_id, "completed", report_path=str(REPORT_FILE))
+        update_history(row_id, "completed", report_path=str(REPORT_FILE))
+
     progress_placeholder.progress(100, text="Selesai!")
-    status_placeholder.success(f"Analisis **{field_clean}** selesai!")
+    status_placeholder.success(f"Analisis {field_clean} selesai!")
 
-    with result_placeholder:
-        st.divider()
+    st.divider()
 
-        report_path = REPORT_FILE
-        if report_path.exists():
-            with open(report_path, "r", encoding="utf-8") as f:
-                report_content = f.read()
+    if not REPORT_FILE.exists():
+        st.error("File laporan tidak ditemukan!")
+        if row_id is not None:
+            update_history(row_id, "failed", error="File tidak ditemukan")
+        st.stop()
 
-            if len(report_content.strip()) < 50:
-                st.warning(f"⚠️ Report terlalu pendek ({len(report_content.strip())} chars) — analisis mungkin gagal. Periksa file markdown untuk detail.")
-                _update_history(row_id, "failed", error="Report terlalu pendek")
-                status_placeholder.error("Analisis gagal — output tidak mencukupi. Coba ubah provider LLM atau ulangi.")
-                st.stop()
+    with open(REPORT_FILE, "r", encoding="utf-8") as f:
+        report_content = f.read()
 
-            report_content = filter_fake_urls_from_report(report_content)
-            report_content = _strip_code_fence(report_content)
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(report_content)
+    if len(report_content.strip()) < 50:
+        st.warning(
+            f"Report terlalu pendek ({len(report_content.strip())} chars) - "
+            "analisis mungkin gagal."
+        )
+        if row_id is not None:
+            update_history(row_id, "failed", error="Report terlalu pendek")
+        status_placeholder.error("Analisis gagal - output tidak mencukupi.")
+        st.stop()
 
-            html_content = md_to_html(report_content)
-            pdf_bytes = md_to_pdf(report_content)
+    report_content = filter_fake_urls_from_report(report_content)
+    report_content = re.sub(
+        r'^```(?:markdown)?\s*\n(.*?)\n```\s*$',
+        r'\1',
+        report_content.strip(),
+        count=1,
+        flags=re.DOTALL,
+    )
+    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+        f.write(report_content)
 
-            tab_preview, tab_download = st.tabs(["👁️ Preview", "📥 Download"])
-
-            with tab_preview:
-                st.markdown(report_content)
-
-            with tab_download:
-                dcols = st.columns(3)
-                with dcols[0]:
-                    st.download_button(
-                        "Download Markdown",
-                        data=report_content,
-                        file_name=report_path.name,
-                        mime="text/markdown",
-                        use_container_width=True,
-                    )
-                with dcols[1]:
-                    st.download_button(
-                        "Download HTML",
-                        data=html_content,
-                        file_name=report_path.with_suffix(".html").name,
-                        mime="text/html",
-                        use_container_width=True,
-                    )
-                with dcols[2]:
-                    if pdf_bytes:
-                        st.download_button(
-                            "Download PDF",
-                            data=pdf_bytes,
-                            file_name=report_path.with_suffix(".pdf").name,
-                            mime="application/pdf",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.warning(
-                            "PDF tidak tersedia. Alternatif: download HTML → buka di browser → Print → Save as PDF."
-                        )
-
-            st.divider()
-
-            if st.button("🔄 Analisis Baru", type="secondary", use_container_width=True):
-                for key in ("row_id", "field_clean"):
-                    st.session_state.pop(key, None)
-                result_placeholder.empty()
-                status_placeholder.empty()
-                progress_placeholder.empty()
-                st.rerun()
-        else:
-            st.error("File laporan tidak ditemukan!")
-            _update_history(row_id, "failed", error="File tidak ditemukan")
+    if st.button("Lihat Laporan", type="primary", use_container_width=True):
+        st.switch_page("pages/1_Report.py")

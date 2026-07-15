@@ -101,6 +101,27 @@ pre code {{ display: block; padding: 10px; overflow-x: auto; }}
 </style></head><body>{html_body}</body></html>"""
 
 
+def generate_logo_svg(brand_name: str, size: int = 200) -> str:
+    """Generate SVG logo with brand initials. Zero external dependencies."""
+    initials = "".join(w[0].upper() for w in brand_name.split() if w)[:3]
+    if not initials:
+        initials = "?"
+    cx = size // 2
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e94560"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+  </defs>
+  <rect width="{size}" height="{size}" rx="{size*0.12}" fill="url(#g)"/>
+  <text x="{cx}" y="{cx + size*0.04}" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.4}"
+        fill="white">{initials}</text>
+</svg>'''
+    return svg
+
+
 def md_to_pdf(md_content: str) -> bytes | None:
     cleaned = _sanitize_for_pdf(md_content)
 

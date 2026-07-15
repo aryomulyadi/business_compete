@@ -19,11 +19,11 @@ RESEARCHER_MAX_TOKENS: Final[int] = 4096
 ANALYST_MAX_TOKENS: Final[int] = 8192
 WRITER_MAX_TOKENS: Final[int] = 16384
 
-RESEARCHER_MAX_ITER: Final[int] = 8
+RESEARCHER_MAX_ITER: Final[int] = 15
 ANALYST_MAX_ITER: Final[int] = 3
 
 SERPER_TIMEOUT: Final[int] = 10
-URL_VALIDATE_TIMEOUT: Final[int] = 5
+URL_VALIDATE_TIMEOUT: Final[int] = 10
 CACHE_TTL: Final[int] = 86400  # 24 jam
 
 ENV_VARS: Final[list[str]] = [
