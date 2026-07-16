@@ -167,9 +167,8 @@ class TestRetryableLLM:
     def test_get_llm_with_omniroute_provider(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        free_tcp_port: int,
     ) -> None:
-        custom_base_url = f"http://localhost:{free_tcp_port}/v1"
+        custom_base_url = "http://localhost:18777/v1"
 
         monkeypatch.setenv("LLM_PROVIDER", "omniroute")
         monkeypatch.setenv("OMNIROUTE_API_KEY", "test-key")

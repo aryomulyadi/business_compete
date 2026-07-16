@@ -88,21 +88,22 @@ class ProgressCallback:
     """CrewAI step callback to track agent progress in real-time using Rich."""
 
     def __call__(self, step: Any) -> None:
-        agent_name = getattr(getattr(step, "agent", None), "role", None) or getattr(
-            step, "agent_name", None
-        ) or getattr(getattr(step, "task", None), "agent_name", None) or "Unknown"
+        with _lock:
+            agent_name = getattr(getattr(step, "agent", None), "role", None) or getattr(
+                step, "agent_name", None
+            ) or getattr(getattr(step, "task", None), "agent_name", None) or "Unknown"
 
-        global _current_agent, _start_time
-        if _start_time is None:
-            _start_time = time.time()
+            global _current_agent, _start_time
+            if _start_time is None:
+                _start_time = time.time()
 
-        for name, _ in _STEPS:
-            if name.lower() in agent_name.lower():
-                if name not in _completed_tasks and _current_agent != name:
-                    if _current_agent and _current_agent not in _completed_tasks:
-                        _completed_tasks.append(_current_agent)
-                    _current_agent = name
-                break
+            for name, _ in _STEPS:
+                if name.lower() in agent_name.lower():
+                    if name not in _completed_tasks and _current_agent != name:
+                        if _current_agent and _current_agent not in _completed_tasks:
+                            _completed_tasks.append(_current_agent)
+                        _current_agent = name
+                    break
 
         console.clear()
         console.print(_build_layout())

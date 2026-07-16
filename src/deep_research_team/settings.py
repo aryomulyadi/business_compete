@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Final
@@ -11,6 +12,10 @@ OUTPUT_DIR: Final[Path] = PROJECT_ROOT / "output"
 REPORT_FILE: Final[Path] = OUTPUT_DIR / "laporan_analisis_kompetitor.md"
 CACHE_DIR: Final[Path] = OUTPUT_DIR / "cache"
 DB_PATH: Final[Path] = OUTPUT_DIR / "history.db"
+
+
+def report_path_for(row_id: int) -> Path:
+    return OUTPUT_DIR / f"laporan_{row_id}.md"
 
 AGENTS_CONFIG: Final[str] = "config/agents.yaml"
 TASKS_CONFIG: Final[str] = "config/tasks.yaml"
@@ -42,6 +47,17 @@ ENV_VARS: Final[list[str]] = [
 LLM_PROVIDER_DEFAULT: Final[str] = "mimo"
 
 LOG_FORMAT: Final[str] = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+
+def validate_env() -> list[str]:
+    """Check that required API keys are set. Returns list of missing keys."""
+    missing: list[str] = []
+    if not os.getenv("SERPER_API_KEY"):
+        missing.append("SERPER_API_KEY (https://serper.dev)")
+    llm_keys = ["MIMO_API_KEY", "GROQ_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "OMNIROUTE_API_KEY"]
+    if not any(os.getenv(k) for k in llm_keys):
+        missing.append("at least one LLM provider key: " + ", ".join(llm_keys))
+    return missing
 
 
 def setup_logging(name: str | None = None) -> logging.Logger:

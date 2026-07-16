@@ -26,7 +26,7 @@ def test_settings_have_expected_values() -> None:
     assert RESEARCHER_MAX_TOKENS == 4096
     assert ANALYST_MAX_TOKENS == 8192
     assert WRITER_MAX_TOKENS == 16384
-    assert RESEARCHER_MAX_ITER == 8
+    assert RESEARCHER_MAX_ITER == 15
     assert ANALYST_MAX_ITER == 3
     assert SERPER_TIMEOUT == 10
     assert URL_VALIDATE_TIMEOUT == 10

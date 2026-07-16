@@ -20,8 +20,33 @@ def init_db() -> None:
         )
     """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS logo_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            history_row_id INTEGER NOT NULL,
+            brand_name TEXT NOT NULL,
+            concept TEXT,
+            svg TEXT,
+            png_path TEXT,
+            style TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (history_row_id) REFERENCES history(id)
+        )
+    """
+    )
+    _reap_stale_rows(conn)
     conn.commit()
     conn.close()
+
+
+def _reap_stale_rows(conn: sqlite3.Connection) -> None:
+    """Mark stale 'running' rows as failed (crash recovery)."""
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE history SET status='failed', error=? WHERE status='running'",
+        (f"Analisis terputus (restart). Stale since {now}",),
+    )
 
 
 def _prune_history(max_rows: int = 100) -> None:
@@ -68,6 +93,61 @@ def get_history_row(row_id: int) -> Optional[dict[str, Any]]:
         return None
     return {"id": row[0], "field": row[1], "status": row[2],
             "created_at": row[3], "report_path": row[4], "error": row[5]}
+
+
+def save_logo(
+    history_row_id: int,
+    brand_name: str,
+    concept: str = "",
+    svg: str = "",
+    png_path: str = "",
+    style: str = "",
+) -> int:
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "INSERT INTO logo_history (history_row_id, brand_name, concept, svg, png_path, style, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (history_row_id, brand_name, concept, svg, png_path, style, datetime.now().isoformat()),
+    )
+    conn.commit()
+    row_id = cur.lastrowid
+    conn.close()
+    return row_id
+
+
+def get_logos(history_row_id: int) -> list[dict[str, Any]]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT id, history_row_id, brand_name, concept, svg, png_path, style, created_at "
+        "FROM logo_history WHERE history_row_id=? ORDER BY id DESC",
+        (history_row_id,),
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "id": r[0], "history_row_id": r[1], "brand_name": r[2],
+            "concept": r[3], "svg": r[4], "png_path": r[5],
+            "style": r[6], "created_at": r[7],
+        }
+        for r in rows
+    ]
+
+
+def get_logo(logo_id: int) -> Optional[dict[str, Any]]:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT id, history_row_id, brand_name, concept, svg, png_path, style, created_at "
+        "FROM logo_history WHERE id=?",
+        (logo_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {
+        "id": row[0], "history_row_id": row[1], "brand_name": row[2],
+        "concept": row[3], "svg": row[4], "png_path": row[5],
+        "style": row[6], "created_at": row[7],
+    }
 
 
 def get_history(limit: int = 20) -> list[dict[str, Any]]:

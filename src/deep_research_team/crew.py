@@ -32,6 +32,7 @@ class DeepResearchCrew:
 
     agents: List[BaseAgent]
     tasks: List[Task]
+    report_path: str = str(REPORT_FILE)
 
     agents_config = AGENTS_CONFIG
     tasks_config = TASKS_CONFIG
@@ -81,7 +82,7 @@ class DeepResearchCrew:
         return Task(
             config=self.tasks_config["writing_task"],
             context=[self.analysis_task()],
-            output_file=str(REPORT_FILE),
+            output_file=self.report_path,
         )
 
     @crew

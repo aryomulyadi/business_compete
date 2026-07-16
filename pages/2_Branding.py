@@ -1,12 +1,19 @@
-import os
-import re
+from pathlib import Path
 
 import streamlit as st
 
+from deep_research_team.backend import (
+    BrandConcept,
+    generate_ai_logo,
+    generate_svg_logo,
+    get_brand_concepts,
+    get_logo_history,
+    save_logo_entry,
+)
+from deep_research_team.page_utils import render_breadcrumbs, render_sidebar
 from deep_research_team.settings import REPORT_FILE
-from deep_research_team.tools.export_utils import generate_logo_svg
-
-os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+from deep_research_team.tools.db_utils import get_history_row, init_db
+from deep_research_team.tools.gemini_image import STYLE_PROMPTS
 
 st.set_page_config(
     page_title="Branding - Deep Research Team",
@@ -14,25 +21,30 @@ st.set_page_config(
     layout="wide",
 )
 
-_CSS = """
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.block-container {padding-top: 1.5rem; padding-bottom: 0;}
-h1 {font-size: 2rem !important; font-weight: 700 !important;
-    letter-spacing: -0.5px !important;}
-h2 {font-size: 1.3rem !important; font-weight: 600 !important;}
-.stButton > button {font-weight: 600;}
-.logo-preview {display: flex; justify-content: center; padding: 1rem 0;}
-</style>
-"""
+render_sidebar()
 
-st.markdown(_CSS, unsafe_allow_html=True)
+init_db()
+
+
+def _brand_to_dict(bc: BrandConcept) -> dict:
+    return bc.to_dict()
+
 
 row_id = st.session_state.get("row_id")
+field_clean = st.session_state.get("field_clean", "")
 
-if not row_id or not REPORT_FILE.exists():
+report_path = None
+if row_id:
+    row = get_history_row(row_id)
+    if row:
+        rp = row.get("report_path")
+        if rp and Path(rp).exists():
+            report_path = Path(rp)
+
+if not report_path and REPORT_FILE.exists():
+    report_path = REPORT_FILE
+
+if not report_path:
     st.title("Branding & Logo")
     st.markdown(
         '<p style="opacity: 0.6;">'
@@ -43,53 +55,151 @@ if not row_id or not REPORT_FILE.exists():
         st.switch_page("app.py")
     st.stop()
 
-with open(REPORT_FILE, "r", encoding="utf-8") as f:
+with open(report_path, "r", encoding="utf-8") as f:
     report_content = f.read()
 
-suggested_names = []
-m = re.search(r'##\s*8\.\s*Brand Strategy.*?(?:$|\n##)', report_content, re.DOTALL)
-if m:
-    section = m.group(0)
-    for line in section.split("\n"):
-        line = line.strip()
-        if line.startswith("- **") or line.startswith("* **"):
-            name = re.sub(r'^[-*]\s*\*\*(.*?)\*\*.*', r'\1', line)
-            if name and name != line:
-                suggested_names.append(name)
+brands = [_brand_to_dict(bc) for bc in get_brand_concepts(report_content)]
 
+render_breadcrumbs(("app.py", "Beranda"), ("pages/1_Report.py", "Laporan"), ("pages/2_Branding.py", "Branding & Logo"))
 st.title("Branding & Logo")
 
-if suggested_names:
-    with st.expander("Rekomendasi Nama Brand dari Laporan", expanded=False):
-        for name in suggested_names:
-            st.markdown(f"- {name}")
-        st.caption("Nama-nama ini diekstrak dari seksi Brand Strategy laporan.")
+if not brands:
+    st.info("Tidak ditemukan rekomendasi brand di laporan ini.")
+    st.stop()
 
-st.markdown("### Buat Logo SVG")
-st.markdown("Masukkan nama brand untuk menghasilkan logo berbentuk SVG.")
+_GRID_COLS = 2
 
-brand_name = st.text_input(
-    "Nama Brand",
-    value=suggested_names[0] if suggested_names else "",
-    placeholder="Contoh: TechGrowth, FashInnovate",
-    label_visibility="collapsed",
-)
+brand_rows = [brands[i:i + _GRID_COLS] for i in range(0, len(brands), _GRID_COLS)]
+for row_idx, brand_row in enumerate(brand_rows):
+    cols = st.columns(_GRID_COLS)
+    for col_idx, brand in enumerate(brand_row):
+        i = row_idx * _GRID_COLS + col_idx
+        with cols[col_idx]:
+            with st.container(border=True):
+                st.markdown(f"### {i+1}. {brand['name']}")
 
-if brand_name:
-    brand_name = brand_name.strip()
-    svg = generate_logo_svg(brand_name)
+                c1, c2 = st.columns(2)
+                with c1:
+                    if brand.get("meaning"):
+                        st.markdown(f'<div class="label">Makna</div><div class="value">{brand["meaning"]}</div>', unsafe_allow_html=True)
+                    if brand.get("philosophy"):
+                        st.markdown(f'<div class="label">Filosofi</div><div class="value">{brand["philosophy"]}</div>', unsafe_allow_html=True)
+                with c2:
+                    if brand.get("target_market"):
+                        st.markdown(f'<div class="label">Target Pasar</div><div class="value">{brand["target_market"]}</div>', unsafe_allow_html=True)
+                    if brand.get("positioning"):
+                        st.markdown(f'<div class="label">Positioning</div><div class="value">{brand["positioning"]}</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="logo-preview">', unsafe_allow_html=True)
-    st.markdown(svg, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+                concept = {
+                    "meaning": brand.get("meaning", ""),
+                    "philosophy": brand.get("philosophy", ""),
+                    "target_market": brand.get("target_market", ""),
+                    "positioning": brand.get("positioning", ""),
+                }
 
-    st.download_button(
-        "Download SVG",
-        data=svg,
-        file_name=f"logo_{brand_name.lower().replace(' ', '_')}.svg",
-        mime="image/svg+xml",
-        use_container_width=True,
-    )
+                col_gen_svg, col_gen_ai = st.columns(2)
+                with col_gen_svg:
+                    if st.button("Generate SVG", key=f"svg_{row_id}_{i}", use_container_width=True):
+                        svg = generate_svg_logo(brand["name"])
+                        st.session_state[f"svg_{i}"] = svg
+                        st.session_state[f"ai_{i}"] = None
+                        save_logo_entry(
+                            history_row_id=row_id,
+                            brand_name=brand["name"],
+                            concept=concept,
+                            svg=svg,
+                            style="svg",
+                        )
+                        st.rerun()
 
-    with st.expander("Lihat source SVG"):
-        st.code(svg, language="xml")
+                with col_gen_ai:
+                    style_key = f"style_{i}"
+                    style_options = list(STYLE_PROMPTS.keys())
+                    style_idx = style_options.index(st.session_state.get(style_key, style_options[0]))
+                    selected_style = st.selectbox(
+                        "Gaya",
+                        style_options,
+                        index=style_idx,
+                        key=f"style_sel_{i}",
+                        label_visibility="collapsed",
+                    )
+                    st.session_state[style_key] = selected_style
+                    if st.button("Generate AI Logo", key=f"ai_{row_id}_{i}", use_container_width=True):
+                        with st.spinner(f"Menghasilkan logo untuk {brand['name']}..."):
+                            png_bytes, err_msg = generate_ai_logo(brand["name"], concept, selected_style)
+                            if png_bytes:
+                                output_dir = Path("output/logos")
+                                output_dir.mkdir(parents=True, exist_ok=True)
+                                png_file = output_dir / f"logo_{row_id}_{i}.png"
+                                png_file.write_bytes(png_bytes)
+                                st.session_state[f"ai_{i}"] = str(png_file)
+                                st.session_state[f"svg_{i}"] = None
+                                save_logo_entry(
+                                    history_row_id=row_id,
+                                    brand_name=brand["name"],
+                                    concept=concept,
+                                    svg="",
+                                    png_path=str(png_file),
+                                    style=selected_style,
+                                )
+                                st.rerun()
+                            else:
+                                st.error(err_msg or "Gagal generate logo AI (error tidak diketahui).")
+
+                svg_content = st.session_state.get(f"svg_{i}")
+                ai_path = st.session_state.get(f"ai_{i}")
+
+                if svg_content:
+                    st.markdown('<div class="logo-preview">', unsafe_allow_html=True)
+                    st.markdown(svg_content, unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    col_dl1, col_dl2 = st.columns(2)
+                    with col_dl1:
+                        st.download_button(
+                            "Download SVG",
+                            data=svg_content,
+                            file_name=f"logo_{brand['name'].lower().replace(' ', '_')}.svg",
+                            mime="image/svg+xml",
+                            key=f"dl_svg_{row_id}_{i}",
+                            use_container_width=True,
+                        )
+                    with col_dl2:
+                        with st.expander("Source SVG"):
+                            st.code(svg_content, language="xml")
+
+                if ai_path:
+                    st.markdown('<div class="logo-preview">', unsafe_allow_html=True)
+                    st.image(ai_path, width=300)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    with open(ai_path, "rb") as f:
+                        png_data = f.read()
+                    st.download_button(
+                        "Download PNG",
+                        data=png_data,
+                        file_name=f"logo_{brand['name'].lower().replace(' ', '_')}.png",
+                        mime="image/png",
+                        key=f"dl_png_{row_id}_{i}",
+                        use_container_width=True,
+                    )
+
+                logos = [lg.to_dict() for lg in get_logo_history(row_id)]
+                brand_logos = [lg for lg in logos if lg["brand_name"] == brand["name"]]
+                if len(brand_logos) > 1:
+                    with st.expander(f"Riwayat Logo ({len(brand_logos)-1} sebelumnya)", expanded=False):
+                        for prev in brand_logos[1:]:
+                            lcols = st.columns([3, 1])
+                            with lcols[0]:
+                                st.markdown(
+                                    f'<div class="logo-history">{prev["created_at"][:16]} '
+                                    f'| Gaya: {prev["style"] or "-"}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                if prev["png_path"] and Path(prev["png_path"]).exists():
+                                    st.image(prev["png_path"], width=100)
+                            with lcols[1]:
+                                if prev["png_path"] and Path(prev["png_path"]).exists():
+                                    if st.button("Gunakan", key=f"use_{prev['id']}", use_container_width=True):
+                                        st.session_state[f"ai_{i}"] = prev["png_path"]
+                                        st.session_state[f"svg_{i}"] = None
+                                        st.rerun()
+

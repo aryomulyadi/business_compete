@@ -1,12 +1,13 @@
-import os
+import time
+from pathlib import Path
 
 import streamlit as st
 
+from deep_research_team.backend import get_brand_names
+from deep_research_team.page_utils import render_breadcrumbs, render_sidebar
 from deep_research_team.settings import REPORT_FILE
 from deep_research_team.tools.db_utils import get_history_row
 from deep_research_team.tools.export_utils import md_to_html, md_to_pdf
-
-os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 st.set_page_config(
     page_title="Laporan - Deep Research Team",
@@ -14,20 +15,8 @@ st.set_page_config(
     layout="wide",
 )
 
-_CSS = """
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.block-container {padding-top: 1.5rem; padding-bottom: 0;}
-h1 {font-size: 2rem !important; font-weight: 700 !important;
-    letter-spacing: -0.5px !important;}
-h2 {font-size: 1.3rem !important; font-weight: 600 !important;}
-.stButton > button {font-weight: 600;}
-</style>
-"""
+render_sidebar()
 
-st.markdown(_CSS, unsafe_allow_html=True)
 
 row_id = st.session_state.get("row_id")
 field_clean = st.session_state.get("field_clean", "")
@@ -57,7 +46,8 @@ if row is None:
 status = row["status"]
 field_clean = field_clean or row["field"]
 
-st.title("Laporan Analisis")
+render_breadcrumbs(("app.py", "Beranda"), ("pages/1_Report.py", "Laporan"))
+st.title(f"Laporan{': ' + field_clean if field_clean else ' Analisis'}")
 
 if field_clean:
     st.markdown(
@@ -82,9 +72,15 @@ if status == "failed":
 
 elif status == "running":
     st.warning("Analisis masih berjalan. Silakan tunggu atau cek progress di halaman utama.")
-    if st.button("Ke Halaman Utama", type="primary", use_container_width=True):
-        st.switch_page("app.py")
-    st.stop()
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("Ke Halaman Utama (Progress)", type="primary", use_container_width=True):
+            st.switch_page("app.py")
+    with col_b:
+        if st.button("Refresh", type="secondary", use_container_width=True):
+            st.rerun()
+    time.sleep(2)
+    st.rerun()
 
 elif status != "completed":
     st.warning(f"Status analisis: {status}. Belum ada laporan untuk ditampilkan.")
@@ -92,22 +88,27 @@ elif status != "completed":
         st.switch_page("app.py")
     st.stop()
 
-if not REPORT_FILE.exists():
+rp = row.get("report_path")
+report_file = Path(rp) if rp and Path(rp).exists() else REPORT_FILE
+
+if not report_file.exists():
     st.error("File laporan tidak ditemukan di disk.")
     if st.button("Ke Halaman Utama", type="primary", use_container_width=True):
         st.switch_page("app.py")
     st.stop()
 
-with open(REPORT_FILE, "r", encoding="utf-8") as f:
+with open(report_file, "r", encoding="utf-8") as f:
     report_content = f.read()
 
 html_content = md_to_html(report_content)
 pdf_bytes = md_to_pdf(report_content)
 
-tab_preview, tab_download = st.tabs(["Preview", "Download"])
+tab_preview, tab_download, tab_branding = st.tabs(["Preview", "Download", "Branding"])
 
 with tab_preview:
     st.markdown(report_content)
+    if st.button("↑ Ke Atas", type="secondary"):
+        st.markdown('<script>window.scrollTo(0,0);</script>', unsafe_allow_html=True)
 
 with tab_download:
     dcols = st.columns(3)
@@ -115,7 +116,7 @@ with tab_download:
         st.download_button(
             "Download Markdown",
             data=report_content,
-            file_name=REPORT_FILE.name,
+            file_name=report_file.name,
             mime="text/markdown",
             use_container_width=True,
         )
@@ -123,7 +124,7 @@ with tab_download:
         st.download_button(
             "Download HTML",
             data=html_content,
-            file_name=REPORT_FILE.with_suffix(".html").name,
+            file_name=report_file.with_suffix(".html").name,
             mime="text/html",
             use_container_width=True,
         )
@@ -132,7 +133,7 @@ with tab_download:
             st.download_button(
                 "Download PDF",
                 data=pdf_bytes,
-                file_name=REPORT_FILE.with_suffix(".pdf").name,
+                file_name=report_file.with_suffix(".pdf").name,
                 mime="application/pdf",
                 use_container_width=True,
             )
@@ -141,6 +142,17 @@ with tab_download:
                 "PDF tidak tersedia. Alternatif: download HTML, buka di browser, "
                 "Print > Save as PDF."
             )
+
+with tab_branding:
+    st.markdown("### Rekomendasi Brand")
+    brand_names = get_brand_names(report_content)
+    if brand_names:
+        for name in brand_names:
+            if st.button(f"Buat Logo untuk {name}", key=f"brand_{name}", use_container_width=True):
+                st.session_state.brand_name = name
+                st.switch_page("pages/2_Branding.py")
+    else:
+        st.caption("Tidak ditemukan rekomendasi brand di laporan.")
 
 st.divider()
 

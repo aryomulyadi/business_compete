@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import sys
@@ -101,17 +102,31 @@ pre code {{ display: block; padding: 10px; overflow-x: auto; }}
 </style></head><body>{html_body}</body></html>"""
 
 
+_SVG_COLORS = [
+    ["#e94560", "#16213e"],
+    ["#0f3460", "#533483"],
+    ["#1a1a2e", "#e94560"],
+    ["#2d6a4f", "#1b4332"],
+    ["#e07a5f", "#3d405b"],
+]
+
+
 def generate_logo_svg(brand_name: str, size: int = 200) -> str:
     """Generate SVG logo with brand initials. Zero external dependencies."""
     initials = "".join(w[0].upper() for w in brand_name.split() if w)[:3]
     if not initials:
         initials = "?"
+    palette = _SVG_COLORS[hash(brand_name) % len(_SVG_COLORS)]
+    template = hash(brand_name + "_template") % 5
     cx = size // 2
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+    r = size * 0.38
+
+    if template == 0:
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
   <defs>
     <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#e94560"/>
-      <stop offset="100%" stop-color="#16213e"/>
+      <stop offset="0%" stop-color="{palette[0]}"/>
+      <stop offset="100%" stop-color="{palette[1]}"/>
     </linearGradient>
   </defs>
   <rect width="{size}" height="{size}" rx="{size*0.12}" fill="url(#g)"/>
@@ -119,7 +134,81 @@ def generate_logo_svg(brand_name: str, size: int = 200) -> str:
         font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.4}"
         fill="white">{initials}</text>
 </svg>'''
+    elif template == 1:
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="{palette[0]}"/>
+      <stop offset="100%" stop-color="{palette[1]}"/>
+    </radialGradient>
+  </defs>
+  <circle cx="{cx}" cy="{cx}" r="{r}" fill="url(#g)"/>
+  <text x="{cx}" y="{cx + size*0.04}" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.4}"
+        fill="white">{initials}</text>
+</svg>'''
+    elif template == 2:
+        pts = _hexagon_points(cx, r * 0.9)
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+  <polygon points="{pts}" fill="{palette[0]}" stroke="{palette[1]}" stroke-width="{size*0.02}"/>
+  <text x="{cx}" y="{cx + size*0.04}" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.35}"
+        fill="white">{initials}</text>
+</svg>'''
+    elif template == 3:
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="{palette[0]}"/>
+      <stop offset="100%" stop-color="{palette[1]}"/>
+    </linearGradient>
+  </defs>
+  <rect x="{size*0.05}" y="{size*0.15}" width="{size*0.9}" height="{size*0.7}" rx="{size*0.2}" fill="url(#g)"/>
+  <text x="{cx}" y="{cx + size*0.03}" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.35}"
+        fill="white">{initials}</text>
+</svg>'''
+    else:
+        ds = size * 0.06
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="{palette[0]}"/>
+      <stop offset="100%" stop-color="{palette[1]}"/>
+    </linearGradient>
+  </defs>
+  <polygon points="{cx},{ds} {size-ds},{cx} {cx},{size-ds} {ds},{cx}" fill="url(#g)"/>
+  <text x="{cx}" y="{cx + size*0.04}" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, sans-serif" font-weight="bold" font-size="{size*0.35}"
+        fill="white">{initials}</text>
+</svg>'''
     return svg
+
+
+def _hexagon_points(cx: int, r: float) -> str:
+    pts = []
+    for i in range(6):
+        angle = 3.14159 * 2 * i / 6 - 3.14159 / 2
+        x = cx + r * math.cos(angle)
+        y = cx + r * math.sin(angle)
+        pts.append(f"{x:.1f},{y:.1f}")
+    return " ".join(pts)
+
+
+_BRAND_SECTION_PATTERNS = [
+    re.compile(r'##\s*8\.\s*Brand Strategy.*?(?:$|\n##)', re.DOTALL),
+    re.compile(r'##\s*Brand Strategy.*?(?:$|\n##)', re.DOTALL | re.IGNORECASE),
+    re.compile(r'###\s*8\.?\s*Brand Strategy.*?(?:$|\n###|\n##)', re.DOTALL | re.IGNORECASE),
+    re.compile(r'\*\*8\.?\s*Brand Strategy\*\*.*?(?:$|\n\*\*|\n##)', re.DOTALL | re.IGNORECASE),
+]
+
+
+def find_brand_section(report: str) -> str | None:
+    for pat in _BRAND_SECTION_PATTERNS:
+        m = pat.search(report)
+        if m:
+            return m.group(0)
+    return None
 
 
 def md_to_pdf(md_content: str) -> bytes | None:
@@ -132,6 +221,7 @@ def md_to_pdf(md_content: str) -> bytes | None:
         html = markdown.markdown(cleaned, extensions=["tables", "fenced_code"])
         html = _simplify_html_for_pdf(html)
         pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
 
         if _UNICODE_FONT:
