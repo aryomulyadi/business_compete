@@ -28,7 +28,7 @@ logger = setup_logging(__name__)
 
 @CrewBase
 class DeepResearchCrew:
-    """Deep Research Team crew"""
+    """BizComp AI crew"""
 
     agents: List[BaseAgent]
     tasks: List[Task]

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { IconChevronRight } from './Icons'
 
 interface BreadcrumbLink {
@@ -14,12 +15,12 @@ export default function Breadcrumbs({ links }: { links: BreadcrumbLink[] }) {
         <span key={i} className="flex items-center gap-1">
           {i > 0 && <IconChevronRight size={12} className="text-[#475569]" />}
           {link.href ? (
-            <a
+            <Link
               href={link.href}
               className="text-[#64748B] hover:text-[#94A3B8] transition-colors"
             >
               {link.label}
-            </a>
+            </Link>
           ) : (
             <span className="text-[#CBD5E1] font-medium">{link.label}</span>
           )}

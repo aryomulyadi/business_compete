@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import Breadcrumbs from '@/components/Breadcrumbs'
-import { IconPalette, IconSearch, IconChevronRight } from '@/components/Icons'
+import { IconPalette, IconChevronRight } from '@/components/Icons'
 import { SkeletonPage } from '@/components/Skeleton'
 import type { BrandedReport } from '@/lib/types'
 
@@ -46,7 +47,7 @@ export default function BrandingGalleryPage() {
             <IconPalette size={28} className="text-[#475569]" />
           </div>
           <p className="text-[#94A3B8] text-sm mb-2">Belum ada rekomendasi brand</p>
-          <a href="/dashboard" className="text-[#F58A2A] text-sm hover:underline">Mulai analisis baru untuk menghasilkan brand</a>
+          <Link href="/dashboard" className="text-[#F58A2A] text-sm hover:underline">Mulai analisis baru untuk menghasilkan brand</Link>
         </div>
       )}
 
@@ -76,19 +77,19 @@ export default function BrandingGalleryPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <a
+                  <Link
                     href={`/report/${r.row_id}`}
                     className="btn-ghost text-xs px-3 py-1.5"
                   >
                     Laporan
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href={`/branding/${r.row_id}`}
                     className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1"
                   >
                     Detail
                     <IconChevronRight size={12} />
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

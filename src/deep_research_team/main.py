@@ -148,7 +148,7 @@ def test():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Deep Research Team")
+    parser = argparse.ArgumentParser(description="BizComp AI")
     parser.add_argument("--clear-cache", action="store_true", help="Hapus semua cache pencarian")
     args, _ = parser.parse_known_args()
     if args.clear_cache:

@@ -87,9 +87,9 @@ const config: Config = {
         },
       },
       backgroundImage: {
-        'gradient-accent': 'linear-gradient(135deg, #386641, #F97A00)',
+        'gradient-accent': 'linear-gradient(135deg, #F58A2A, #FED16A)',
         'gradient-warm': 'linear-gradient(135deg, #FED16A, #FFF4A4)',
-        'gradient-success': 'linear-gradient(135deg, #386641, #F97A00)',
+        'gradient-success': 'linear-gradient(135deg, #F58A2A, #FED16A)',
         'gradient-glass': 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
       },
     },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import { connectProgressWs } from '@/lib/websocket'
 import ProgressBar from '@/components/ProgressBar'
@@ -122,13 +123,13 @@ export default function DashboardPage() {
               <p className="text-[#F58A2A] font-semibold text-sm">Analisis Selesai ✓</p>
               <p className="text-[#64748B] text-xs mt-1">Laporan siap untuk ditinjau</p>
             </div>
-            <a
+            <Link
               href={`/report/${rowId}`}
               className="btn-primary flex items-center gap-1.5"
             >
               Lihat Laporan
               <IconChevronRight size={16} />
-            </a>
+            </Link>
           </div>
         </div>
       )}

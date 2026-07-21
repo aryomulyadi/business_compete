@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import Breadcrumbs from '@/components/Breadcrumbs'
-import { IconSearch, IconDownload } from '@/components/Icons'
+import { IconSearch } from '@/components/Icons'
 import { SkeletonTable } from '@/components/Skeleton'
 import type { HistoryItem } from '@/lib/types'
 
@@ -70,7 +71,7 @@ export default function HistoryPage() {
             <IconSearch size={24} className="text-[#475569]" />
           </div>
           <p className="text-[#94A3B8] text-sm mb-2">Belum ada analisis yang tersimpan</p>
-          <a href="/dashboard" className="text-[#F58A2A] text-sm hover:underline">Mulai analisis baru</a>
+          <Link href="/dashboard" className="text-[#F58A2A] text-sm hover:underline">Mulai analisis baru</Link>
         </div>
       )}
 
@@ -100,12 +101,12 @@ export default function HistoryPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   {item.status === 'completed' && (
                     <>
-                      <a
+                      <Link
                         href={`/report/${item.id}`}
                         className="btn-primary text-xs px-3 py-1.5"
                       >
                         Buka
-                      </a>
+                      </Link>
                       <div className="flex gap-1">
                         {(['md', 'html', 'pdf'] as const).map((fmt) => (
                           <a

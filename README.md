@@ -1,16 +1,18 @@
-# Deep Research Team
+# BizComp AI
 
-Multi-agent AI system untuk analisis kompetitor bisnis otomatis. Menggunakan [CrewAI](https://github.com/joaomdmoura/crewAI) dengan tiga agent yang bekerja secara sekuensial: Researcher → Analyst → Writer.
+Navigasi Arah Bisnis, Kuasai Peta Persaingan.
+
+Platform analisis kompetitor bisnis berbasis AI — SWOT, Five Forces, PESTEL, dan strategi brand dalam satu laporan otomatis. Menggunakan [CrewAI](https://github.com/joaomdmoura/crewAI) dengan tiga agent yang bekerja secara sekuensial: Researcher → Analyst → Writer.
 
 ## Fitur
 
 - **Pencarian mendalam** — parallel search dengan 5 query template per bidang bisnis
 - **Analisis strategis** — SWOT, Porter's Five Forces, PESTEL, perbandingan kompetitor, gap analysis
 - **Ekspor laporan** — Markdown, HTML, PDF
-- **Dual interface** — CLI (terminal) & Web UI (Streamlit)
+- **Dual interface** — CLI (terminal) & Web UI (Next.js)
 - **Validasi URL** — otomatis menghapus URL palsu/halusinasi dari laporan
 - **Retry & fallback** — exponential backoff + fallback model jika LLM utama gagal
-- **Progress tracking** — real-time progress bar (CLI: Rich, Web: Streamlit)
+- **Progress tracking** — real-time progress bar (CLI: Rich, Web: WebSocket)
 
 ## Prasyarat
 
@@ -75,13 +77,14 @@ python -m deep_research_team.main
 
 Kemudian masukkan bidang bisnis yang ingin dianalisis.
 
-### Web UI (Streamlit)
+### Web UI (Next.js)
 
 ```bash
-streamlit run app.py
+cd frontend
+npm run dev
 ```
 
-Buka http://localhost:8501 di browser.
+Buka http://localhost:3000 di browser.
 
 ### Output
 
@@ -166,7 +169,8 @@ Serper API → cache (MD5 hash) → validate HEAD → filter_fake_urls()
 ## Struktur Direktori
 
 ```
-├── app.py                  # Streamlit web UI
+├── frontend/               # Next.js web UI
+├── fastapi_backend/         # FastAPI REST API
 ├── pyproject.toml          # Build & dependency config
 ├── .env                    # API keys (jangan di-commit)
 ├── .env.example            # Template environment

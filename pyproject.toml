@@ -1,7 +1,7 @@
 [project]
-name = "deep-research-team"
+name = "bizcomp-ai"
 version = "0.1.0"
-description = "Deep Research Team using crewAI"
+description = "BizComp AI — AI-powered competitor analysis"
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "crewai>=1.15.0",
@@ -33,7 +33,7 @@ select = ["E", "F", "W"]
 ignore = ["E501"]
 
 [project.scripts]
-deep-research-team = "deep_research_team.main:run"
+bizcomp-ai = "deep_research_team.main:run"
 run_crew = "deep_research_team.main:run"
 train = "deep_research_team.main:train"
 replay = "deep_research_team.main:replay"

@@ -47,7 +47,7 @@ const STEPS = [
 
 const SECTIONS = [
   { label: 'SWOT',        pct: 80, color: '#F58A2A', icon: '📊' },
-  { label: 'Five Forces', pct: 60, color: '#386641', icon: '⚔️' },
+  { label: 'Five Forces', pct: 60, color: '#F58A2A', icon: '⚔️' },
   { label: 'PESTEL',      pct: 45, color: '#1E3557', icon: '🌍' },
   { label: 'Branding',    pct: 25, color: '#FED16A', icon: '🎨' },
 ]

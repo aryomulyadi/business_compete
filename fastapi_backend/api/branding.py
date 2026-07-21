@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -15,12 +16,12 @@ from deep_research_team.backend import (
     save_logo_entry,
 )
 from deep_research_team.settings import setup_logging
-from deep_research_team.tools.gemini_image import STYLE_PROMPTS
+from deep_research_team.tools.image_generator import STYLE_PROMPTS
 from deep_research_team.tools.export_utils import generate_logo_svg
 
 logger = setup_logging(__name__)
-
 router = APIRouter(prefix="/api/branding", tags=["branding"])
+LOGOS_DIR = Path("output/logos")
 
 
 @router.get("/concepts")
@@ -100,22 +101,38 @@ async def create_ai_logo(payload: dict[str, Any]) -> dict[str, Any]:
 
     image_bytes, error = await asyncio.to_thread(generate_ai_logo, brand_name, concept_dict, style)
 
-    if error:
-        return {"image_base64": None, "error": error}
+    if image_bytes:
+        LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = brand_name.replace(" ", "_").replace("/", "_")
+        safe_style = style.replace(" ", "_").replace("/", "_")
+        logo_filename = f"{safe_name}_{safe_style}_{int(time.time())}.png"
+        (LOGOS_DIR / logo_filename).write_bytes(image_bytes)
 
-    b64 = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else None
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    if history_row_id and image_bytes:
+        if history_row_id:
+            save_logo_entry(
+                history_row_id=int(history_row_id),
+                brand_name=brand_name,
+                concept=concept_dict or {},
+                svg="",
+                png_path=logo_filename,
+                style=style,
+            )
+
+        return {"image_base64": b64, "svg": None, "error": None}
+
+    svg = generate_logo_svg(brand_name)
+    if history_row_id:
         save_logo_entry(
             history_row_id=int(history_row_id),
             brand_name=brand_name,
             concept=concept_dict or {},
-            svg="",
+            svg=svg,
             png_path="",
             style=style,
         )
-
-    return {"image_base64": b64, "error": None}
+    return {"image_base64": None, "svg": svg, "error": None}
 
 
 @router.get("/logo/history/{history_row_id}")

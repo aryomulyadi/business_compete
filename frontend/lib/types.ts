@@ -18,17 +18,6 @@ export interface HistoryItem {
   error: string | null
 }
 
-export interface LogoItem {
-  id: number
-  history_row_id: number
-  brand_name: string
-  concept: string
-  svg: string
-  png_path: string | null
-  style: string
-  created_at: string
-}
-
 export interface TaskProgress {
   task_id: string
   status: 'pending' | 'running' | 'completed' | 'failed'

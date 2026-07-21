@@ -1,6 +1,8 @@
+import base64
 import os
 from typing import Optional
 
+import requests
 from google import genai
 from google.genai import errors as genai_errors
 
@@ -35,22 +37,74 @@ STYLE_PROMPTS = {
 
 DEFAULT_STYLE = "modern minimalis"
 
+CLOUDFLARE_URL_KEY = "CLOUDFLARE_AI_URL"
+CLOUDFLARE_KEY_KEY = "CLOUDFLARE_AI_KEY"
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
 
 def generate_logo_image(
     brand_name: str,
     concept: Optional[dict] = None,
     style: str = DEFAULT_STYLE,
 ) -> tuple[Optional[bytes], Optional[str]]:
-    """Returns (image_bytes, error_message). On success error_message is None, on failure image_bytes is None."""
     if concept is None:
         concept = {}
     style_desc = STYLE_PROMPTS.get(style, STYLE_PROMPTS[DEFAULT_STYLE])
     prompt = _build_prompt(brand_name, concept, style_desc)
+
+    cf_url = os.getenv(CLOUDFLARE_URL_KEY)
+    cf_key = os.getenv(CLOUDFLARE_KEY_KEY)
+    if cf_url and cf_key:
+        result = _try_cloudflare(prompt, cf_url, cf_key)
+        if result:
+            err = _validate_image_bytes(result)
+            if not err:
+                logger.info("Logo generated via Cloudflare AI (Flux Schnell)")
+                return result, None
+            logger.warning("Cloudflare image too large (%s), trying Gemini", err)
+
+    result = _try_gemini(prompt)
+    if result:
+        err = _validate_image_bytes(result)
+        if not err:
+            logger.info("Logo generated via Gemini (fallback)")
+            return result, None
+        logger.warning("Gemini image too large (%s)", err)
+
+    return None, "Semua provider AI gagal. Gunakan Generate SVG."
+
+
+def _try_cloudflare(prompt: str, url: str, key: str) -> Optional[bytes]:
+    try:
+        res = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={"prompt": prompt},
+            timeout=30,
+        )
+        if res.status_code != 200:
+            logger.warning("Cloudflare AI HTTP %s: %s", res.status_code, res.text[:200])
+            return None
+        data = res.json()
+        if "image" not in data:
+            logger.warning("Cloudflare AI response missing 'image' field")
+            return None
+        return base64.b64decode(data["image"])
+    except requests.RequestException as exc:
+        logger.warning("Cloudflare AI request failed: %s", exc)
+        return None
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning("Cloudflare AI parse error: %s", exc)
+        return None
+
+
+def _try_gemini(prompt: str) -> Optional[bytes]:
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
-        msg = "GEMINI_API_KEY tidak ditemukan di environment. Set di file .env"
-        logger.error(msg)
-        return None, msg
+        return None
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
@@ -60,28 +114,27 @@ def generate_logo_image(
         )
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                return part.inline_data.data, None
-        logger.warning("Response tidak mengandung image data")
-        return None, "Model tidak mengembalikan data gambar. Coba gaya lain."
+                return part.inline_data.data
+        logger.warning("Gemini response tidak mengandung image data")
+        return None
     except genai_errors.ClientError as exc:
         code = getattr(exc, "status_code", 0)
         if code == 429:
-            msg = (
-                "Kuota Gemini API habis (429). Model ini mungkin perlu billing. "
-                "Aktifkan billing di Google AI Studio, atau gunakan 'Generate SVG'."
-            )
+            logger.warning("Gemini quota habis (429)")
         elif code == 403:
-            msg = "API Key tidak valid atau tidak memiliki akses ke model ini. Periksa GEMINI_API_KEY di .env."
-        elif code == 400:
-            msg = f"Request tidak valid: {exc}"
+            logger.warning("Gemini API Key invalid (403)")
         else:
-            msg = f"Gemini API error ({code}): {exc}"
-        logger.error(msg)
-        return None, msg
+            logger.warning("Gemini API error (%s): %s", code, exc)
+        return None
     except Exception as exc:
-        msg = f"Gagal generate logo: {exc}"
-        logger.error(msg)
-        return None, msg
+        logger.warning("Gemini generate error: %s", exc)
+        return None
+
+
+def _validate_image_bytes(data: bytes) -> Optional[str]:
+    if len(data) > MAX_IMAGE_SIZE:
+        return f"Image terlalu besar ({len(data) / 1024 / 1024:.1f}MB, max 5MB)"
+    return None
 
 
 def _build_prompt(brand_name: str, concept: dict, style_desc: str) -> str:

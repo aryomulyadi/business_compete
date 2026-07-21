@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import Breadcrumbs from '@/components/Breadcrumbs'
@@ -17,6 +18,7 @@ export default function BrandingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [field, setField] = useState('')
+  const [logos, setLogos] = useState<any[]>([])
 
   useEffect(() => {
     if (!reportId) return
@@ -24,10 +26,12 @@ export default function BrandingPage() {
     Promise.all([
       api.getBrandConcepts(reportId),
       api.getReport(reportId).catch(() => null),
+      api.getLogoHistory(reportId).catch(() => ({ logos: [] })),
     ])
-      .then(([brandData, reportData]) => {
+      .then(([brandData, reportData, historyData]) => {
         setConcepts(brandData.concepts)
         setField(reportData?.field || '')
+        setLogos(historyData.logos)
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false))
@@ -63,9 +67,9 @@ export default function BrandingPage() {
             <IconPalette size={28} className="text-[#475569]" />
           </div>
           <p className="text-[#94A3B8] text-sm mb-3">Tidak ditemukan rekomendasi brand di laporan ini.</p>
-          <a href={`/report/${reportId}`} className="text-[#F58A2A] text-sm hover:underline">
+          <Link href={`/report/${reportId}`} className="text-[#F58A2A] text-sm hover:underline">
             Kembali ke Laporan
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -75,6 +79,7 @@ export default function BrandingPage() {
               brand={brand}
               index={i + 1}
               historyRowId={reportId}
+              previousLogos={logos.filter(l => l.brand_name === brand.name)}
             />
           ))}
         </div>

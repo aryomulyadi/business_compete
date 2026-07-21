@@ -4,8 +4,11 @@ import io
 import warnings
 
 from dotenv import load_dotenv
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from deep_research_team.settings import ENV_VARS, setup_logging, validate_env
 from deep_research_team.tools.db_utils import init_db
@@ -39,6 +42,10 @@ app = FastAPI(
     version="0.1.0",
     description="Navigasi Arah Bisnis, Kuasai Peta Persaingan.",
 )
+
+logos_dir = Path("output/logos")
+logos_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/branding/logo/files", StaticFiles(directory=str(logos_dir.resolve())), name="logos")
 
 app.add_middleware(
     CORSMiddleware,

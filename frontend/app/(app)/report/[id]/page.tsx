@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import Breadcrumbs from '@/components/Breadcrumbs'
@@ -39,7 +40,7 @@ export default function ReportPage() {
     </div>
   )
   if (!report) return (
-    <div className="px-4 py-3 rounded-lg bg-[#FED16A]/10 border border-[#FED16A]/20 text-[#FFF4A4] text-sm animate-fade-in">
+    <div className="px-4 py-3 rounded-lg bg-warm/10 border border-warm/20 text-[#FFF4A4] text-sm animate-fade-in">
       Laporan tidak ditemukan
     </div>
   )
@@ -136,7 +137,7 @@ export default function ReportPage() {
           ) : (
             <div className="flex flex-wrap gap-3">
               {brandNames.map((name) => (
-                <a
+                <Link
                   key={name}
                   href={`/branding/${id}?brand=${encodeURIComponent(name)}`}
                   className="btn-primary flex items-center gap-2"
@@ -144,7 +145,7 @@ export default function ReportPage() {
                   <IconPalette size={16} />
                   {name}
                   <IconChevronRight size={14} />
-                </a>
+                </Link>
               ))}
             </div>
           )}

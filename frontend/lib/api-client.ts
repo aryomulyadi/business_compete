@@ -1,5 +1,16 @@
 import type { BrandConcept, HistoryItem, HistoryListResponse, ReportData, TaskProgress, BrandedReportsResponse } from './types'
 
+export interface LogoItem {
+  id: number
+  history_row_id: number
+  brand_name: string
+  concept: string
+  svg: string
+  png_path: string | null
+  style: string
+  created_at: string
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -61,7 +72,7 @@ export const api = {
     concept?: Record<string, string>,
     style?: string,
     historyRowId?: number
-  ): Promise<{ image_base64: string | null; error: string | null }> {
+  ): Promise<{ image_base64: string | null; svg: string | null; error: string | null }> {
     return request('/api/branding/logo/ai', {
       method: 'POST',
       body: JSON.stringify({
@@ -73,7 +84,7 @@ export const api = {
     })
   },
 
-  getLogoHistory(historyRowId: number): Promise<{ logos: any[] }> {
+  getLogoHistory(historyRowId: number): Promise<{ logos: LogoItem[] }> {
     return request(`/api/branding/logo/history/${historyRowId}`)
   },
 

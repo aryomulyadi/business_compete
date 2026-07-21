@@ -30,6 +30,17 @@ pdm.lock
 # Cache
 output/cache/
 
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit
+.streamlit/
+
+# Build artifacts
+dist/
+*.egg
+
 # Testing
 .pytest_cache/
 tests/__pycache__/

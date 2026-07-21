@@ -4,7 +4,7 @@ from typing import Optional
 from deep_research_team.backend.models import LogoItem
 from deep_research_team.tools.db_utils import get_logos, save_logo
 from deep_research_team.tools.export_utils import generate_logo_svg
-from deep_research_team.tools.gemini_image import generate_logo_image
+from deep_research_team.tools.image_generator import generate_logo_image
 
 
 def generate_svg_logo(brand_name: str) -> str:
