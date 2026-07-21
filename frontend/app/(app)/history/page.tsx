@@ -16,15 +16,18 @@ export default function HistoryPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchHistory = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.getHistory(search || undefined, offset, PAGE_SIZE)
       setItems(res.items)
       setTotal(res.total)
     } catch (e) {
       console.error(e)
+      setError(e instanceof Error ? e.message : 'Gagal memuat riwayat')
     } finally {
       setLoading(false)
     }
@@ -65,7 +68,13 @@ export default function HistoryPage() {
 
       {loading && <SkeletonTable />}
 
-      {!loading && items.length === 0 && (
+      {error && (
+        <div className="px-4 py-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20 text-[#FCA5A5] text-sm mb-6">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center py-16 text-center">
           <div className="w-12 h-12 rounded-xl bg-[#1E293B] flex items-center justify-center mb-4">
             <IconSearch size={24} className="text-[#475569]" />

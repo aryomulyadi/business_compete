@@ -59,33 +59,50 @@ class TestTryCloudflare:
     def test_success(self, mock_post):
         img_bytes = b"fake_png_data"
         mock_post.return_value = MagicMock(
-            status_code=200,
-            json=lambda: {"image": base64.b64encode(img_bytes).decode()},
+            ok=True,
+            json=lambda: {
+                "success": True,
+                "result": {"image": base64.b64encode(img_bytes).decode()},
+                "errors": [],
+            },
         )
-        result = _try_cloudflare("test prompt", "http://fake.url", "fake-key")
+        result = _try_cloudflare("test prompt", "fake-account-id", "fake-token")
         assert result == img_bytes
 
     @patch("deep_research_team.tools.image_generator.requests.post")
     def test_non_200(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=400, text="Bad Request")
-        assert _try_cloudflare("test", "http://fake.url", "key") is None
+        mock_post.return_value = MagicMock(
+            ok=False,
+            json=lambda: {"success": False, "errors": [{"message": "Invalid auth"}]},
+        )
+        assert _try_cloudflare("test", "fake-account-id", "fake-token") is None
 
     @patch("deep_research_team.tools.image_generator.requests.post")
     def test_missing_image_field(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"error": "no image"})
-        assert _try_cloudflare("test", "http://fake.url", "key") is None
+        mock_post.return_value = MagicMock(
+            ok=True,
+            json=lambda: {"success": True, "result": {}, "errors": []},
+        )
+        assert _try_cloudflare("test", "fake-account-id", "fake-token") is None
 
     @patch("deep_research_team.tools.image_generator.requests.post")
     def test_invalid_base64(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"image": "not-base64!!!"})
-        assert _try_cloudflare("test", "http://fake.url", "key") is None
+        mock_post.return_value = MagicMock(
+            ok=True,
+            json=lambda: {
+                "success": True,
+                "result": {"image": "not-base64!!!"},
+                "errors": [],
+            },
+        )
+        assert _try_cloudflare("test", "fake-account-id", "fake-token") is None
 
     @patch("deep_research_team.tools.image_generator.requests.post")
     def test_connection_error(self, mock_post):
         from requests.exceptions import ConnectionError
 
         mock_post.side_effect = ConnectionError("Connection refused")
-        assert _try_cloudflare("test", "http://fake.url", "key") is None
+        assert _try_cloudflare("test", "fake-account-id", "fake-token") is None
 
 
 class TestTryGemini:
@@ -152,7 +169,7 @@ class TestGenerateLogoImage:
         mock_cf.return_value = img_bytes
         mock_gemini.return_value = b"gemini_image"
 
-        with patch.dict(os.environ, {"CLOUDFLARE_AI_URL": "url", "CLOUDFLARE_AI_KEY": "key"}):
+        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "id", "CLOUDFLARE_API_TOKEN": "tok"}):
             result, error = generate_logo_image("Brand")
         assert result == img_bytes
         assert error is None
@@ -165,7 +182,7 @@ class TestGenerateLogoImage:
         mock_cf.return_value = None
         mock_gemini.return_value = img_bytes
 
-        with patch.dict(os.environ, {"CLOUDFLARE_AI_URL": "url", "CLOUDFLARE_AI_KEY": "key"}):
+        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "id", "CLOUDFLARE_API_TOKEN": "tok"}):
             result, error = generate_logo_image("Brand")
         assert result == img_bytes
         assert error is None
@@ -176,7 +193,7 @@ class TestGenerateLogoImage:
         mock_cf.return_value = None
         mock_gemini.return_value = None
 
-        with patch.dict(os.environ, {"CLOUDFLARE_AI_URL": "url", "CLOUDFLARE_AI_KEY": "key"}):
+        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "id", "CLOUDFLARE_API_TOKEN": "tok"}):
             result, error = generate_logo_image("Brand")
         assert result is None
         assert error is not None
@@ -198,7 +215,7 @@ class TestGenerateLogoImage:
         mock_cf.return_value = b"x" * (5 * 1024 * 1024 + 1)
         mock_gemini.return_value = b"gemini_ok"
 
-        with patch.dict(os.environ, {"CLOUDFLARE_AI_URL": "url", "CLOUDFLARE_AI_KEY": "key"}):
+        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "id", "CLOUDFLARE_API_TOKEN": "tok"}):
             result, error = generate_logo_image("Brand")
         assert result == b"gemini_ok"
         assert error is None
@@ -209,7 +226,7 @@ class TestGenerateLogoImage:
         mock_cf.return_value = b"x" * (5 * 1024 * 1024 + 1)
         mock_gemini.return_value = b"y" * (5 * 1024 * 1024 + 1)
 
-        with patch.dict(os.environ, {"CLOUDFLARE_AI_URL": "url", "CLOUDFLARE_AI_KEY": "key", "GEMINI_API_KEY": "key"}):
+        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "id", "CLOUDFLARE_API_TOKEN": "tok", "GEMINI_API_KEY": "key"}):
             result, error = generate_logo_image("Brand")
         assert result is None
         assert error is not None

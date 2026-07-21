@@ -37,8 +37,9 @@ STYLE_PROMPTS = {
 
 DEFAULT_STYLE = "modern minimalis"
 
-CLOUDFLARE_URL_KEY = "CLOUDFLARE_AI_URL"
-CLOUDFLARE_KEY_KEY = "CLOUDFLARE_AI_KEY"
+CLOUDFLARE_ACCOUNT_KEY = "CLOUDFLARE_ACCOUNT_ID"
+CLOUDFLARE_TOKEN_KEY = "CLOUDFLARE_API_TOKEN"
+CLOUDFLARE_AI_BASE = "https://api.cloudflare.com/client/v4/accounts"
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 
@@ -52,10 +53,10 @@ def generate_logo_image(
     style_desc = STYLE_PROMPTS.get(style, STYLE_PROMPTS[DEFAULT_STYLE])
     prompt = _build_prompt(brand_name, concept, style_desc)
 
-    cf_url = os.getenv(CLOUDFLARE_URL_KEY)
-    cf_key = os.getenv(CLOUDFLARE_KEY_KEY)
-    if cf_url and cf_key:
-        result = _try_cloudflare(prompt, cf_url, cf_key)
+    cf_account = os.getenv(CLOUDFLARE_ACCOUNT_KEY)
+    cf_token = os.getenv(CLOUDFLARE_TOKEN_KEY)
+    if cf_account and cf_token:
+        result = _try_cloudflare(prompt, cf_account, cf_token)
         if result:
             err = _validate_image_bytes(result)
             if not err:
@@ -74,25 +75,30 @@ def generate_logo_image(
     return None, "Semua provider AI gagal. Gunakan Generate SVG."
 
 
-def _try_cloudflare(prompt: str, url: str, key: str) -> Optional[bytes]:
+def _try_cloudflare(prompt: str, account_id: str, api_token: str) -> Optional[bytes]:
+    url = f"{CLOUDFLARE_AI_BASE}/{account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell"
     try:
         res = requests.post(
             url,
             headers={
-                "Authorization": f"Bearer {key}",
+                "Authorization": f"Bearer {api_token}",
                 "Content-Type": "application/json",
             },
             json={"prompt": prompt},
             timeout=30,
         )
-        if res.status_code != 200:
-            logger.warning("Cloudflare AI HTTP %s: %s", res.status_code, res.text[:200])
-            return None
         data = res.json()
-        if "image" not in data:
-            logger.warning("Cloudflare AI response missing 'image' field")
+        if not data.get("success"):
+            err_msg = "Unknown"
+            if data.get("errors"):
+                err_msg = data["errors"][0].get("message", str(data["errors"][0]))
+            logger.warning("Cloudflare AI API error: %s", err_msg)
             return None
-        return base64.b64decode(data["image"])
+        image_b64 = data.get("result", {}).get("image")
+        if not image_b64:
+            logger.warning("Cloudflare AI response missing 'result.image'")
+            return None
+        return base64.b64decode(image_b64)
     except requests.RequestException as exc:
         logger.warning("Cloudflare AI request failed: %s", exc)
         return None

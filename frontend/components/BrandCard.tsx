@@ -38,12 +38,16 @@ export default function BrandCard({ brand, index, historyRowId, previousLogos }:
   const [style, setStyle] = useState(STYLE_OPTIONS[0])
 
   const handleSvg = async () => {
+    setLoading(true)
+    setAiError(null)
     try {
       const res = await api.generateSvgLogo(brand.name)
       setSvg(res.svg)
       setAiImage(null)
     } catch {
       setAiError('Gagal generate SVG')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -144,20 +148,24 @@ export default function BrandCard({ brand, index, historyRowId, previousLogos }:
       {previousLogos && previousLogos.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {previousLogos.slice(0, 6).map((logo) => (
-            <div
-              key={logo.id}
-              className="w-10 h-10 rounded-lg bg-[#0F172A]/50 border border-[#334155] flex items-center justify-center overflow-hidden cursor-pointer hover:border-[#F58A2A]/50 transition-colors"
-              title={`${logo.style} — ${new Date(logo.created_at).toLocaleString('id')}`}
-            >
+              <div
+                key={logo.id}
+                className="w-10 h-10 rounded-lg bg-[#0F172A]/50 border border-[#334155] flex items-center justify-center overflow-hidden cursor-pointer hover:border-[#F58A2A]/50 transition-colors"
+                title={`${logo.style} — ${new Date(logo.created_at).toLocaleString('id')}`}
+                onClick={() => {
+                  if (logo.png_path) { setAiImage(`${API_URL}/api/branding/logo/file/${logo.png_path}`); setSvg(null) }
+                  else if (logo.svg) { setSvg(logo.svg); setAiImage(null) }
+                }}
+              >
               {logo.png_path ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={`${API_URL}/api/branding/logo/files/${logo.png_path}`}
+                  src={`${API_URL}/api/branding/logo/file/${logo.png_path}`}
                   alt=""
                   className="w-full h-full object-contain"
                 />
               ) : logo.svg ? (
-                <div dangerouslySetInnerHTML={{ __html: logo.svg }} className="w-8 h-8" />
+                <object data={`data:image/svg+xml;utf8,${encodeURIComponent(logo.svg)}`} type="image/svg+xml" className="w-8 h-8" aria-label="" />
               ) : null}
             </div>
           ))}
@@ -166,7 +174,7 @@ export default function BrandCard({ brand, index, historyRowId, previousLogos }:
 
       {/* Actions */}
       <div className="flex gap-2 mb-4">
-        <button onClick={handleSvg} className="btn-ghost flex-1 text-xs">
+        <button onClick={handleSvg} disabled={loading} className="btn-ghost flex-1 text-xs">
           <IconCheck size={14} className="inline mr-1" />
           SVG
         </button>
@@ -203,7 +211,7 @@ export default function BrandCard({ brand, index, historyRowId, previousLogos }:
       )}
       {(svg || aiImage) && (
         <div className="flex justify-center p-4 mb-2 rounded-lg bg-[#0F172A]/50 border border-[#334155] relative group">
-          {svg && <div dangerouslySetInnerHTML={{ __html: svg }} style={{ width: 150, height: 150 }} />}
+          {svg && <object data={`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`} type="image/svg+xml" style={{ width: 150, height: 150 }} aria-label={`${brand.name} logo`} />}
           {aiImage && (
             // eslint-disable-next-line @next/next/no-img-element
             <img

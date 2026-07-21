@@ -44,3 +44,9 @@ dist/
 # Testing
 .pytest_cache/
 tests/__pycache__/
+
+# Frontend build
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+node_modules/

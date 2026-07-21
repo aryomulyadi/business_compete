@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import FileResponse
 
 from deep_research_team.backend import (
     generate_ai_logo,
@@ -133,6 +134,16 @@ async def create_ai_logo(payload: dict[str, Any]) -> dict[str, Any]:
             style=style,
         )
     return {"image_base64": None, "svg": svg, "error": None}
+
+
+@router.get("/logo/file/{filename}")
+async def get_logo_file(filename: str):
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath = LOGOS_DIR / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(filepath, media_type="image/png")
 
 
 @router.get("/logo/history/{history_row_id}")

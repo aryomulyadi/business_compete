@@ -15,15 +15,18 @@ export default function BrandingGalleryPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   const fetch = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.getBrandedReports(offset, PAGE_SIZE)
       setReports(res.reports)
       setTotal(res.total)
     } catch (e) {
       console.error(e)
+      setError(e instanceof Error ? e.message : 'Gagal memuat data branding')
     } finally {
       setLoading(false)
     }
@@ -41,7 +44,13 @@ export default function BrandingGalleryPage() {
 
       {loading && <SkeletonPage />}
 
-      {!loading && reports.length === 0 && (
+      {error && (
+        <div className="px-4 py-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20 text-[#FCA5A5] text-sm mb-6">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && reports.length === 0 && (
         <div className="flex flex-col items-center py-16 text-center">
           <div className="w-14 h-14 rounded-xl bg-[#1E293B] flex items-center justify-center mb-4">
             <IconPalette size={28} className="text-[#475569]" />

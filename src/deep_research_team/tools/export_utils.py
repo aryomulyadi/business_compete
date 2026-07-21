@@ -196,10 +196,10 @@ def _hexagon_points(cx: int, r: float) -> str:
 
 
 _BRAND_SECTION_PATTERNS = [
-    re.compile(r'##\s*8\.\s*Brand Strategy.*?(?:$|\n##)', re.DOTALL),
-    re.compile(r'##\s*Brand Strategy.*?(?:$|\n##)', re.DOTALL | re.IGNORECASE),
-    re.compile(r'###\s*8\.?\s*Brand Strategy.*?(?:$|\n###|\n##)', re.DOTALL | re.IGNORECASE),
-    re.compile(r'\*\*8\.?\s*Brand Strategy\*\*.*?(?:$|\n\*\*|\n##)', re.DOTALL | re.IGNORECASE),
+    re.compile(r'##\s*8\.\s*Brand Strategy.*?(?:$|\n##(?!#))', re.DOTALL),
+    re.compile(r'##\s*Brand Strategy.*?(?:$|\n##(?!#))', re.DOTALL | re.IGNORECASE),
+    re.compile(r'###\s*8\.?\s*Brand Strategy.*?(?:$|\n###|\n##(?!#))', re.DOTALL | re.IGNORECASE),
+    re.compile(r'\*\*8\.?\s*Brand Strategy\*\*.*?(?:$|\n\*\*|\n##(?!#))', re.DOTALL | re.IGNORECASE),
 ]
 
 
