@@ -26,19 +26,10 @@ Platform analisis kompetitor bisnis berbasis AI — SWOT, Five Forces, PESTEL, d
 git clone https://github.com/aryomulyadi/business_compete.git
 cd business_compete
 
-# 2. Buat virtual environment
-python -m venv .venv
+# 2. Install dependencies & setup environment via uv
+uv sync
 
-# 3. Aktifkan venv
-# Windows:
-.venv\Scripts\activate
-# Linux/Mac:
-source .venv/bin/activate
-
-# 4. Install dependencies
-pip install -e .
-
-# 5. Copy & isi environment variables
+# 3. Copy & isi environment variables
 cp .env.example .env
 # Edit .env dengan API key kamu
 ```
@@ -66,13 +57,13 @@ Isi file `.env`:
 ### CLI
 
 ```bash
-run_crew
+uv run run_crew
 ```
 
 Atau:
 
 ```bash
-python -m deep_research_team.main
+uv run python -m deep_research_team.main
 ```
 
 Kemudian masukkan bidang bisnis yang ingin dianalisis.
