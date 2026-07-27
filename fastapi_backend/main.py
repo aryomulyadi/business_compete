@@ -62,7 +62,7 @@ app.include_router(history_router)
 @app.on_event("startup")
 async def startup() -> None:
     if os.getenv("VERCEL") == "1" and not os.getenv("DATABASE_URL"):
-        raise RuntimeError("DATABASE_URL is required for a Vercel deployment")
+        logger.warning("DATABASE_URL not set — using SQLite fallback")
     init_db()
 
 
