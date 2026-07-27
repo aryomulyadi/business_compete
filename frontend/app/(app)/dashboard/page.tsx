@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
-import { connectProgressWs } from '@/lib/websocket'
 import ProgressBar from '@/components/ProgressBar'
 import { IconSparkle, IconSearch, IconChevronRight } from '@/components/Icons'
 import type { TaskProgress } from '@/lib/types'
@@ -14,7 +13,23 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<TaskProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rowId, setRowId] = useState<number | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
+  const [taskId, setTaskId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!taskId) return
+    const timer = window.setInterval(async () => {
+      try {
+        const data = await api.getTaskStatus(taskId)
+        setProgress(data)
+        if (data.status === 'completed' && data.row_id) { setRowId(data.row_id); setTaskId(null) }
+        if (data.status === 'failed') { setError(data.error || 'Analisis gagal'); setTaskId(null) }
+      } catch {
+        setError('Gagal mengambil status analisis')
+        setTaskId(null)
+      }
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [taskId])
 
   const startAnalysis = useCallback(async () => {
     const trimmed = field.trim()
@@ -29,9 +44,11 @@ export default function DashboardPage() {
     setRowId(null)
 
     try {
-      const { task_id } = await api.startAnalysis(trimmed)
+      const { task_id, row_id } = await api.startAnalysis(trimmed)
+      setProgress({ task_id, status: 'pending', field: trimmed, current_agent: null, completed_tasks: [], pct: 0, error: null, row_id, report_path: null })
+      setTaskId(task_id)
 
-      const ws = connectProgressWs(
+      /* Legacy WebSocket client intentionally disabled: durable polling is used in production.
         task_id,
         (data) => {
           setProgress(data)
@@ -47,7 +64,7 @@ export default function DashboardPage() {
         () => setError('Koneksi gagal — server tidak merespon')
       )
 
-      wsRef.current = ws
+      wsRef.current = ws */
     } catch (e) {
       setError(String(e))
     } finally {

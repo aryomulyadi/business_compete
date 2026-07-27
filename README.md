@@ -77,6 +77,16 @@ npm run dev
 
 Buka http://localhost:3000 di browser.
 
+### Deployment Produksi
+
+Gunakan tiga deployment agar pekerjaan analisis tetap berjalan saat API Vercel diskalakan:
+
+1. Deploy root repository sebagai **API Vercel** (entry point `api/index.py`) dan set `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, semua key AI, dan `CORS_ORIGINS`.
+2. Deploy folder `frontend/` sebagai **Frontend Vercel** dan set `NEXT_PUBLIC_API_URL` ke URL API pada langkah pertama.
+3. Deploy `Dockerfile.worker` ke layanan worker yang mendukung container (misalnya Railway atau Render) dengan environment yang sama. Worker mengambil job pending dari PostgreSQL dan menyimpan hasilnya ke Vercel Blob.
+
+`DATABASE_URL` dan `BLOB_READ_WRITE_TOKEN` wajib pada production. Jangan memasukkan secret ke Git atau `wrangler.toml`.
+
 ### Output
 
 Laporan akan tersimpan di folder `output/`:

@@ -1,9 +1,10 @@
 import os
 import threading
+import tempfile
+from pathlib import Path
 
 from deep_research_team.crew import DeepResearchCrew
-from deep_research_team.settings import report_path_for
-from deep_research_team.tools.db_utils import save_history, update_history
+from deep_research_team.tools.db_utils import update_history
 from deep_research_team.tools.progress import (
     _STEPS,
     get_status,
@@ -11,6 +12,7 @@ from deep_research_team.tools.progress import (
     set_crew_error,
     set_crew_result,
 )
+from deep_research_team.tools.storage import upload_bytes
 
 from fastapi_backend.workers.progress_store import update_task
 
@@ -27,24 +29,25 @@ def _poll_progress(task_id: str, stop_event: threading.Event) -> None:
         stop_event.wait(0.5)
 
 
-def run_crew_task(task_id: str, business_field: str) -> None:
-    row_id: int | None = None
+def run_crew_task(task_id: str, business_field: str, row_id: int) -> None:
     stop_poller = threading.Event()
 
     try:
         reset_progress()
-        row_id = save_history(business_field, "running")
-        update_task(task_id, status="running", row_id=row_id)
+        update_history(row_id, "running")
+        update_task(task_id, row_id=row_id)
 
-        file_path = report_path_for(row_id)
-        crew = DeepResearchCrew()
-        crew.report_path = str(file_path)
+        with tempfile.TemporaryDirectory(prefix="bizcomp-") as temp_dir:
+            file_path = Path(temp_dir) / f"laporan_{row_id}.md"
+            crew = DeepResearchCrew()
+            crew.report_path = str(file_path)
 
-        poller = threading.Thread(target=_poll_progress, args=(task_id, stop_poller), daemon=True)
-        poller.start()
+            poller = threading.Thread(target=_poll_progress, args=(task_id, stop_poller), daemon=True)
+            poller.start()
 
-        result = crew.crew().kickoff(inputs={"business_field": business_field})
-        set_crew_result(result)
+            result = crew.crew().kickoff(inputs={"business_field": business_field})
+            set_crew_result(result)
+            report_url = upload_bytes(f"reports/{row_id}.md", file_path.read_bytes(), "text/markdown; charset=utf-8")
 
         stop_poller.set()
         agent, completed = get_status()
@@ -54,9 +57,9 @@ def run_crew_task(task_id: str, business_field: str) -> None:
             current_agent=None,
             completed_tasks=list(completed),
             pct=100.0,
-            report_path=str(file_path),
+            report_path=report_url,
         )
-        update_history(row_id, "completed", report_path=str(file_path))
+        update_history(row_id, "completed", report_path=report_url)
 
     except Exception as e:
         stop_poller.set()

@@ -30,6 +30,10 @@ const STYLE_OPTIONS = [
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+function logoUrl(pngPath: string): string {
+  return pngPath.startsWith('http') ? pngPath : `${API_URL}/api/branding/logo/file/${encodeURIComponent(pngPath)}`
+}
+
 export default function BrandCard({ brand, index, historyRowId, previousLogos }: BrandCardProps) {
   const [svg, setSvg] = useState<string | null>(null)
   const [aiImage, setAiImage] = useState<string | null>(null)
@@ -153,14 +157,14 @@ export default function BrandCard({ brand, index, historyRowId, previousLogos }:
                 className="w-10 h-10 rounded-lg bg-[#0F172A]/50 border border-[#334155] flex items-center justify-center overflow-hidden cursor-pointer hover:border-[#F58A2A]/50 transition-colors"
                 title={`${logo.style} — ${new Date(logo.created_at).toLocaleString('id')}`}
                 onClick={() => {
-                  if (logo.png_path) { setAiImage(`${API_URL}/api/branding/logo/file/${logo.png_path}`); setSvg(null) }
+                  if (logo.png_path) { setAiImage(logoUrl(logo.png_path)); setSvg(null) }
                   else if (logo.svg) { setSvg(logo.svg); setAiImage(null) }
                 }}
               >
               {logo.png_path ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={`${API_URL}/api/branding/logo/file/${logo.png_path}`}
+                  src={logoUrl(logo.png_path)}
                   alt=""
                   className="w-full h-full object-contain"
                 />

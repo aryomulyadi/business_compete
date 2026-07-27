@@ -27,7 +27,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Analysis
-  startAnalysis(businessField: string): Promise<{ task_id: string; field: string }> {
+  startAnalysis(businessField: string): Promise<{ task_id: string; field: string; row_id: number }> {
     return request('/api/analysis/start', {
       method: 'POST',
       body: JSON.stringify({ business_field: businessField }),
