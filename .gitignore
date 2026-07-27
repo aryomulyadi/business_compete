@@ -50,3 +50,5 @@ frontend/.next/
 frontend/node_modules/
 frontend/out/
 node_modules/
+.vercel/
+frontend/.vercel/

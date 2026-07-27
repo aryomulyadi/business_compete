@@ -2,9 +2,12 @@ import re
 from pathlib import Path
 from typing import Optional
 
+import requests
+
 from deep_research_team.backend.models import BrandConcept
 from deep_research_team.settings import setup_logging
 from deep_research_team.tools.export_utils import find_brand_section
+from deep_research_team.tools.storage import read_text as read_stored_text
 
 logger = setup_logging(__name__)
 
@@ -29,11 +32,11 @@ _SKIP_WORDS = {
 }
 
 
-def read_report(report_path: Path) -> Optional[str]:
-    if not report_path.exists():
+def read_report(report_path: str | Path) -> Optional[str]:
+    try:
+        return read_stored_text(str(report_path))
+    except (OSError, ValueError, requests.RequestException):
         return None
-    with open(report_path, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 def get_brand_names(report: str) -> list[str]:

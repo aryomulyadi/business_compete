@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from deep_research_team.backend import (
     generate_ai_logo,
@@ -19,6 +19,7 @@ from deep_research_team.backend import (
 from deep_research_team.settings import setup_logging
 from deep_research_team.tools.image_generator import STYLE_PROMPTS
 from deep_research_team.tools.export_utils import generate_logo_svg
+from deep_research_team.tools.storage import upload_bytes
 
 logger = setup_logging(__name__)
 router = APIRouter(prefix="/api/branding", tags=["branding"])
@@ -39,8 +40,7 @@ async def list_brand_concepts(
             continue
         if not item.report_path:
             continue
-        rp = Path(item.report_path)
-        content = read_report(rp)
+        content = read_report(item.report_path)
         if not content:
             continue
         names = get_brand_names(content)
@@ -103,11 +103,10 @@ async def create_ai_logo(payload: dict[str, Any]) -> dict[str, Any]:
     image_bytes, error = await asyncio.to_thread(generate_ai_logo, brand_name, concept_dict, style)
 
     if image_bytes:
-        LOGOS_DIR.mkdir(parents=True, exist_ok=True)
         safe_name = brand_name.replace(" ", "_").replace("/", "_")
         safe_style = style.replace(" ", "_").replace("/", "_")
         logo_filename = f"{safe_name}_{safe_style}_{int(time.time())}.png"
-        (LOGOS_DIR / logo_filename).write_bytes(image_bytes)
+        png_location = upload_bytes(f"logos/{logo_filename}", image_bytes, "image/png")
 
         b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -117,7 +116,7 @@ async def create_ai_logo(payload: dict[str, Any]) -> dict[str, Any]:
                 brand_name=brand_name,
                 concept=concept_dict or {},
                 svg="",
-                png_path=logo_filename,
+                png_path=png_location,
                 style=style,
             )
 
@@ -138,6 +137,9 @@ async def create_ai_logo(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/logo/file/{filename}")
 async def get_logo_file(filename: str):
+    if filename.startswith(("https%3A", "http%3A")):
+        from urllib.parse import unquote
+        return RedirectResponse(unquote(filename))
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     filepath = LOGOS_DIR / filename

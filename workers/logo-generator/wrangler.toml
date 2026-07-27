@@ -2,5 +2,4 @@ name = "free-image-generation-api"
 main = "worker.js"
 compatibility_date = "2025-04-01"
 
-[vars]
-CLOUDFLARE_AI_KEY = "rahasia123"
+# Set this with `wrangler secret put CLOUDFLARE_AI_KEY`; never commit it here.

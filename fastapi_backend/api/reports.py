@@ -7,6 +7,7 @@ from deep_research_team.backend import get_brand_concepts, get_brand_names
 from deep_research_team.settings import setup_logging
 from deep_research_team.tools.db_utils import get_history_row
 from deep_research_team.tools.export_utils import md_to_html, md_to_pdf
+from deep_research_team.tools.storage import read_text as read_stored_text
 
 from fastapi_backend.core.deps import get_report_path
 
@@ -25,7 +26,7 @@ async def get_report(row_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Report status is {row['status']}")
 
     report_path = get_report_path(row_id)
-    content = report_path.read_text("utf-8")
+    content = read_stored_text(str(report_path))
 
     return {
         "id": row["id"],
@@ -39,11 +40,11 @@ async def get_report(row_id: int) -> dict[str, Any]:
 @router.get("/{row_id}/export/{fmt}")
 async def export_report(row_id: int, fmt: str) -> Any:
     report_path = get_report_path(row_id)
-    content = report_path.read_text("utf-8")
+    content = read_stored_text(str(report_path))
 
     if fmt == "md":
         return PlainTextResponse(content, media_type="text/markdown",
-                                 headers={"Content-Disposition": f"attachment; filename={report_path.name}"})
+                headers={"Content-Disposition": f"attachment; filename=laporan_{row_id}.md"})
     elif fmt == "html":
         html = md_to_html(content)
         return HTMLResponse(html)
@@ -55,7 +56,7 @@ async def export_report(row_id: int, fmt: str) -> Any:
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={report_path.with_suffix('.pdf').name}"},
+            headers={"Content-Disposition": f"attachment; filename=laporan_{row_id}.pdf"},
         )
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -65,7 +66,7 @@ async def export_report(row_id: int, fmt: str) -> Any:
 @router.post("/{row_id}/branding/concepts")
 async def get_brand_concepts_endpoint(row_id: int) -> dict[str, Any]:
     report_path = get_report_path(row_id)
-    content = report_path.read_text("utf-8")
+    content = read_stored_text(str(report_path))
     concepts = get_brand_concepts(content)
     names = get_brand_names(content)
     return {"concepts": [c.to_dict() for c in concepts], "names": names}

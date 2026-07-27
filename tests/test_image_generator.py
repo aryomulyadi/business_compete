@@ -2,8 +2,6 @@ import base64
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from deep_research_team.tools.image_generator import (
     _build_prompt,
     _try_cloudflare,

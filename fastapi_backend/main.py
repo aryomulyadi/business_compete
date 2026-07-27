@@ -41,7 +41,10 @@ app = FastAPI(
     description="Navigasi Arah Bisnis, Kuasai Peta Persaingan.",
 )
 
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    os.getenv("NEXT_PUBLIC_API_URL", "http://localhost:3000,http://127.0.0.1:3000"),
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in cors_origins.split(",") if o.strip()],
@@ -58,6 +61,8 @@ app.include_router(history_router)
 
 @app.on_event("startup")
 async def startup() -> None:
+    if os.getenv("VERCEL") == "1" and not os.getenv("DATABASE_URL"):
+        raise RuntimeError("DATABASE_URL is required for a Vercel deployment")
     init_db()
 
 
