@@ -65,11 +65,17 @@ def init_db() -> None:
         conn.close()
 
 
+def _insert_returning_id(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> int:
+    if _is_postgres():
+        sql = sql.rstrip(";") + " RETURNING id"
+    cursor = _execute(conn, sql, params)
+    return cursor.fetchone()[0] if _is_postgres() else cursor.lastrowid
+
+
 def save_history(field: str, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> int:
     conn = _connect()
     try:
-        cursor = _execute(conn, "INSERT INTO history (business_field, status, created_at, report_path, error) VALUES (?, ?, ?, ?, ?)", (field, status, _now(), report_path, error))
-        row_id = cursor.fetchone()[0] if _is_postgres() else cursor.lastrowid
+        row_id = _insert_returning_id(conn, "INSERT INTO history (business_field, status, created_at, report_path, error) VALUES (?, ?, ?, ?, ?)", (field, status, _now(), report_path, error))
         conn.commit()
         return int(row_id)
     finally:
@@ -97,8 +103,7 @@ def get_history_row(row_id: int) -> Optional[dict[str, Any]]:
 def save_logo(history_row_id: int, brand_name: str, concept: str = "", svg: str = "", png_path: str = "", style: str = "") -> int:
     conn = _connect()
     try:
-        cursor = _execute(conn, "INSERT INTO logo_history (history_row_id, brand_name, concept, svg, png_path, style, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (history_row_id, brand_name, concept, svg, png_path, style, _now()))
-        row_id = cursor.fetchone()[0] if _is_postgres() else cursor.lastrowid
+        row_id = _insert_returning_id(conn, "INSERT INTO logo_history (history_row_id, brand_name, concept, svg, png_path, style, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (history_row_id, brand_name, concept, svg, png_path, style, _now()))
         conn.commit()
         return int(row_id)
     finally:
