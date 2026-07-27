@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from deep_research_team import settings
@@ -25,8 +26,10 @@ def _connect() -> Any:
         except ImportError as exc:  # pragma: no cover - deployment configuration error
             raise RuntimeError("PostgreSQL requires psycopg. Install the production dependencies.") from exc
         return psycopg.connect(os.environ["DATABASE_URL"])
-    settings.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return sqlite3.connect(str(settings.DB_PATH))
+    default_db = "/tmp/bizcomp.db" if os.getenv("VERCEL") == "1" else str(settings.DB_PATH)
+    db_path = Path(os.getenv("VERCEL_DB_PATH", default_db))
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(str(db_path))
 
 
 def _execute(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> Any:
