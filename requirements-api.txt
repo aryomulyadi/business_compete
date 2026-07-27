@@ -1,0 +1,8 @@
+# BizComp AI — Vercel API (minimal, tanpa crewai/litellm)
+fastapi>=0.110.0
+python-dotenv>=1.0.0
+markdown>=3.6
+requests>=2.31
+google-genai>=1.0.0
+fpdf2>=2.8.0
+psycopg[binary]>=3.2

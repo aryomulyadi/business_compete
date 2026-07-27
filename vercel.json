@@ -3,7 +3,8 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,frontend/**,workers/**,output/**,dist/**}"
+      "excludeFiles": "{tests/**,frontend/**,workers/**,output/**,dist/**,.venv/**}"
     }
-  }
+  },
+  "installCommand": "pip install -r requirements-api.txt"
 }
