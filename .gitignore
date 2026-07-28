@@ -52,3 +52,4 @@ frontend/out/
 node_modules/
 .vercel/
 frontend/.vercel/
+.vercel
