@@ -28,7 +28,7 @@ _BRAND_NAME_PATTERNS = [
 _SKIP_WORDS = {
     "opsi", "nama brand", "contoh", "strategi", "rekomendasi", "brand",
     "makna", "filosofi", "positioning", "differentiation", "diferensiasi",
-    "target", "audience", "pasar", "literal",
+    "target", "audience", "pasar", "literal", "dasar",
 }
 
 
