@@ -6,6 +6,8 @@ from pathlib import Path
 from deep_research_team.crew import DeepResearchCrew
 from deep_research_team.backend.report_service import get_brand_names
 from deep_research_team.tools.db_utils import update_history, update_history_brand_names
+from deep_research_team.tools.llm_utils import clear_llm_cache
+from deep_research_team.tools.search_tool import clear_session_cache
 from deep_research_team.tools.progress import (
     _STEPS,
     get_status,
@@ -38,6 +40,8 @@ def run_crew_task(task_id: str, business_field: str, row_id: int) -> None:
 
     try:
         reset_progress()
+        clear_llm_cache()
+        clear_session_cache()
         update_history(row_id, "running")
         update_task(task_id, row_id=row_id)
 
