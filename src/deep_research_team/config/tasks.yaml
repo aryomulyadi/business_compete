@@ -1,11 +1,20 @@
 research_task:
   description: >
     Cari informasi mendalam tentang kompetitor bisnis di bidang {business_field}.
-    Kumpulkan data berikut sebanyak mungkin:
-    1. Daftar kompetitor utama beserta harga produk/layanan mereka
-    2. Fitur-fitur unggulan yang ditawarkan setiap kompetitor
-    3. Review negatif atau kelemahan yang sering dikeluhkan pelanggan
-    4. Strategi pemasaran yang mereka gunakan
+    Kumpulkan data berikut:
+    1. Daftar kompetitor utama — WAJIB maksimal 5 (LIMA) kompetitor terkuat
+    2. Harga produk/layanan setiap kompetitor
+    3. Fitur-fitur unggulan yang ditawarkan setiap kompetitor
+    4. Review negatif atau kelemahan yang sering dikeluhkan pelanggan
+    5. Strategi pemasaran yang mereka gunakan
+
+    URUTAN EKSEKUSI:
+    - LANGKAH 1: Jalankan deep_search("{business_field}") untuk riset awal.
+      Tool ini menjalankan 5 query pencarian paralel.
+    - LANGKAH 2: Dari hasil Langkah 1, identifikasi kompetitor dan
+      gunakan search_internet untuk query spesifik per kompetitor.
+    - LANGKAH 3: Gunakan scrape_website untuk mengambil konten detail
+      dari URL yang relevan.
 
     ATURAN PENTING:
     - WAJIB GUNAKAN tools search_internet, scrape_website, dan deep_search
@@ -23,32 +32,48 @@ research_task:
       dan jangan membuat data pengganti.
     - Catat URL sumber setiap informasi.
   expected_output: >
-    Dokumen teks terstruktur berisi data mentah kompetitor: daftar kompetitor,
-    harga, fitur, review negatif, dan sumber URL (hanya URL yang valid).
-    Semua dalam Bahasa Indonesia.
+    Dokumen teks terstruktur berisi data mentah kompetitor: daftar kompetitor
+    (maksimal 5), harga, fitur, review negatif, dan sumber URL (hanya URL
+    yang valid). Semua dalam Bahasa Indonesia.
   agent: researcher
 
 analysis_task:
   description: |
     Berdasarkan data mentah dari Researcher, lakukan analisis berikut:
     1. Buat Analisis SWOT (Strengths, Weaknesses, Opportunities, Threats)
-    untuk bisnis klien di bidang {business_field}
+       untuk bisnis klien di bidang {business_field}
     2. Buat analisis Porter's Five Forces (Threat of New Entrants,
-    Bargaining Power of Suppliers, Bargaining Power of Buyers,
-    Threat of Substitutes, Industry Rivalry)
+       Bargaining Power of Suppliers, Bargaining Power of Buyers,
+       Threat of Substitutes, Industry Rivalry)
     3. Buat analisis PESTEL (Political, Economic, Social, Technological,
-    Environmental, Legal) yang relevan
+       Environmental, Legal) yang relevan
     4. Buat tabel perbandingan fitur dan harga antar kompetitor
+       — minimal 3 dan maksimal 5 baris kompetitor
     5. Berikan strategi positioning yang membedakan klien dari kompetitor
-    5a. Sarankan 3–5 opsi nama brand yang strategis untuk {business_field}.
-        Untuk SETIAP opsi, jelaskan:
-        - Makna literal setiap kata/suku kata
-        - Filosofi dan pesan yang ingin disampaikan
-        - Target pasar yang dituju
-        - Positioning yang ingin dicapai
+    5a. Sarankan TEPAT 5 (LIMA) opsi nama brand strategis untuk
+        {business_field}. Untuk SETIAP opsi, gunakan format WAJIB berikut
+        (urutkan dari Opsi 1 sampai Opsi 5):
+
+        **Opsi N: [NAMA BRAND]**
+        - Makna Literal: [jelaskan arti setiap kata/suku kata]
+        - Filosofi & Pesan: [pesan yang ingin disampaikan]
+        - Target Pasar: [deskripsi demografi]
+        - Positioning: [posisi pasar yang ingin dicapai]
+
+        Contoh:
+        **Opsi 1: DermaVerse**
+        - Makna Literal: "Derma" (kulit) + "Verse" (semesta)
+        - Filosofi & Pesan: ...
+        - Target Pasar: ...
+        - Positioning: ...
+
     6. Identifikasi celah pasar (market gap) yang bisa dimanfaatkan
 
-    Gunakan data yang sudah dikumpulkan, jangan berasumsi tanpa data.
+    GUNANAKAN DATA yang sudah dikumpulkan, jangan berasumsi tanpa data.
+    Setiap klaim harus didukung data dari hasil research.
+
+    OUTPUT WAJIB: urutkan analisis sesuai nomor di atas (1-6). Jangan
+    melewatkan satu pun.
   expected_output: >
     Dokumen analisis yang mencakup SWOT matrix, Porter's Five Forces,
     PESTEL, tabel perbandingan kompetitor, strategi positioning, dan
@@ -58,7 +83,8 @@ analysis_task:
 writing_task:
   description: >
     Berdasarkan hasil analisis dari Analyst, buat laporan akhir dalam format
-    Markdown (.md) dengan struktur berikut:
+    Markdown (.md) dengan struktur WAJIB berikut (TEPAT 12 seksi,
+    judul seksi TIDAK BOLEH DIUBAH):
 
     # Laporan Analisis Kompetitor — {business_field}
 
@@ -70,13 +96,18 @@ writing_task:
     ## 6. Porter's Five Forces
     ## 7. Analisis PESTEL
     ## 8. Brand Strategy & Naming
-      - Opsi nama brand strategis (dengan makna, filosofi, target pasar)
+      - Tepat 5 opsi nama brand (copas dari hasil Analyst)
     ## 9. Strategi Positioning
     ## 10. Market Gap & Rekomendasi
     ## 11. Kesimpulan
     ## 12. Daftar Sumber (URL)
 
     Tulis dalam Bahasa Indonesia yang profesional, rapi, dan actionable.
+
+    ATURAN FORMAT:
+    - Judul seksi HARUS persis seperti di atas (termasuk nomor dan tanda ##).
+    - Jangan menambah atau menghapus seksi.
+    - Panjang total laporan: 5.000-10.000 karakter.
 
     ATURAN PENTING:
     - Output harus berupa teks Markdown mentah, JANGAN dibungkus dengan
@@ -89,6 +120,8 @@ writing_task:
       shopee.co.id, tiktok.com, atau instagram.com sebagai sumber.
       Hanya gunakan URL yang benar-benar spesifik yang dihasilkan dari
       tool search_internet / deep_search.
+    - WAJIB sertakan minimal 3 URL sumber yang valid.
+
   expected_output: >
     Teks Markdown mentah (tanpa pembungkus code block) berisi laporan
     analisis kompetitor yang lengkap, terstruktur, dan siap dipresentasikan.

@@ -4,7 +4,8 @@ import tempfile
 from pathlib import Path
 
 from deep_research_team.crew import DeepResearchCrew
-from deep_research_team.tools.db_utils import update_history
+from deep_research_team.backend.report_service import get_brand_names
+from deep_research_team.tools.db_utils import update_history, update_history_brand_names
 from deep_research_team.tools.progress import (
     _STEPS,
     get_status,
@@ -15,9 +16,12 @@ from deep_research_team.tools.progress import (
 from deep_research_team.tools.storage import upload_bytes
 
 from fastapi_backend.workers.progress_store import update_task
+from deep_research_team.settings import setup_logging
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("LITELLM_DROP_PARAMS", "true")
+
+logger = setup_logging(__name__)
 
 
 def _poll_progress(task_id: str, stop_event: threading.Event) -> None:
@@ -47,7 +51,14 @@ def run_crew_task(task_id: str, business_field: str, row_id: int) -> None:
 
             result = crew.crew().kickoff(inputs={"business_field": business_field})
             set_crew_result(result)
-            report_url = upload_bytes(f"reports/{row_id}.md", file_path.read_bytes(), "text/markdown; charset=utf-8")
+            report_content = file_path.read_bytes()
+            report_url = upload_bytes(f"reports/{row_id}.md", report_content, "text/markdown; charset=utf-8")
+            try:
+                names = get_brand_names(report_content.decode("utf-8"))
+                if names:
+                    update_history_brand_names(row_id, names)
+            except Exception as exc:
+                logger.warning("Failed to save brand_names for row %d: %s", row_id, exc)
 
         stop_poller.set()
         agent, completed = get_status()

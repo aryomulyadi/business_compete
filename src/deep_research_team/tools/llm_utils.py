@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 import random
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +35,18 @@ def _strip_cache_breakpoint(messages: list[dict]) -> list[dict]:
         if isinstance(msg, dict) else msg
         for msg in messages
     ]
+
+
+_llm_response_cache: dict[str, str] = {}
+
+
+def clear_llm_cache() -> None:
+    _llm_response_cache.clear()
+
+
+def _llm_cache_key(messages: str | list[LLMMessage], model: str, temperature: float) -> str:
+    raw = json.dumps({"model": model, "temperature": temperature, "messages": messages}, sort_keys=True, default=str)
+    return hashlib.md5(raw.encode()).hexdigest()
 
 
 _original_completion = litellm.completion
@@ -75,6 +90,14 @@ def _is_retryable(error: Exception) -> bool:
     if "timed out" in error_str or "timeout" in error_str:
         return True
     return False
+
+
+def _parse_retry_delay(error: Exception, attempt: int) -> float:
+    delay = BASE_DELAY * (2 ** attempt)
+    m = re.search(r"try again in ([\d.]+)s", str(error))
+    if m:
+        delay = max(delay, float(m.group(1)) + 1)
+    return delay + random.uniform(0, 1)
 
 
 def _env_value(name: str, default: str = "") -> str:
@@ -186,11 +209,15 @@ class RetryableLLM(BaseLLM):
 
     primary_model: str = PRIMARY_MODEL
     fallback_model: str = FALLBACK_MODEL
+    @property
+    def supports_function_calling(self) -> bool:
+        return False
 
     _llm: Any = PrivateAttr()
     _llm_kwargs: dict[str, Any] = PrivateAttr(default_factory=dict)
     _fallback_enabled: bool = PrivateAttr(default=True)
     _max_tokens: int | None = PrivateAttr(default=None)
+    _temperature: float = PrivateAttr(default=0.0)
 
     def __init__(self, **config: Any) -> None:
         model = config.pop("model", PRIMARY_MODEL)
@@ -198,13 +225,16 @@ class RetryableLLM(BaseLLM):
         base_url = config.pop("base_url", None)
         api_key = config.pop("api_key", None)
         fallback_enabled = config.pop("fallback_enabled", True)
+        temperature = config.pop("temperature", 0.0)
         is_mimo_model = "mimo" in model.lower() and not base_url
         provider = "mimo" if is_mimo_model else model.split("/")[0] if "/" in model else "openai"
         super().__init__(
             llm_type=provider,
             model=model,
+            temperature=temperature,
             **config,
         )
+        self._temperature = temperature
         self._max_tokens = max_tokens
         self._fallback_enabled = fallback_enabled
         if base_url:
@@ -221,7 +251,7 @@ class RetryableLLM(BaseLLM):
                 mimo_kwargs["max_tokens"] = max_tokens
             self._llm = MimoDirect(**mimo_kwargs)
         else:
-            self._llm = LLM(model=model, **self._llm_kwargs)
+            self._llm = LLM(model=model, temperature=temperature, **self._llm_kwargs)
 
     def call(
         self,
@@ -247,7 +277,7 @@ class RetryableLLM(BaseLLM):
                         fb_kwargs["max_tokens"] = self._max_tokens
                     self._llm = LLM(**fb_kwargs)
                     self.model = self._llm.model
-                return self._llm.call(
+                llm_kwargs: dict[str, Any] = dict(
                     messages=messages,
                     tools=tools,
                     callbacks=callbacks,
@@ -256,11 +286,21 @@ class RetryableLLM(BaseLLM):
                     from_agent=from_agent,
                     response_model=response_model,
                 )
+                if isinstance(self._llm, MimoDirect):
+                    llm_kwargs["temperature"] = self._temperature
+                ck = _llm_cache_key(messages, self.model, self._temperature)
+                if ck in _llm_response_cache:
+                    logger.debug("LLM cache hit for key=%s", ck[:16])
+                    return _llm_response_cache[ck]
+                result = self._llm.call(**llm_kwargs)
+                if isinstance(result, str):
+                    _llm_response_cache[ck] = result
+                return result
             except Exception as e:
                 last_error = e
                 if not _is_retryable(e):
                     raise
-                delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                delay = _parse_retry_delay(e, attempt)
                 logger.warning(
                     "Attempt %d failed (%s: %s), retrying in %.1fs",
                     attempt, type(e).__name__, e, delay,
@@ -293,7 +333,7 @@ class RetryableLLM(BaseLLM):
                         fb_kwargs["max_tokens"] = self._max_tokens
                     self._llm = LLM(**fb_kwargs)
                     self.model = self._llm.model
-                return await self._llm.acall(
+                llm_kwargs: dict[str, Any] = dict(
                     messages=messages,
                     tools=tools,
                     callbacks=callbacks,
@@ -302,13 +342,23 @@ class RetryableLLM(BaseLLM):
                     from_agent=from_agent,
                     response_model=response_model,
                 )
+                if isinstance(self._llm, MimoDirect):
+                    llm_kwargs["temperature"] = self._temperature
+                ck = _llm_cache_key(messages, self.model, self._temperature)
+                if ck in _llm_response_cache:
+                    logger.debug("LLM cache hit for key=%s", ck[:16])
+                    return _llm_response_cache[ck]
+                result = await self._llm.acall(**llm_kwargs)
+                if isinstance(result, str):
+                    _llm_response_cache[ck] = result
+                return result
             except Exception as e:
                 last_error = e
                 if not _is_retryable(e):
                     raise
-                delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                delay = _parse_retry_delay(e, attempt)
                 logger.warning(
-                    "Attempt %d failed (%s: %s), retrying in %.1fs",
+                    "Attempt %d failed (%s: %s), retrying in %.1fs (acall)",
                     attempt, type(e).__name__, e, delay,
                 )
                 await asyncio.sleep(delay)
@@ -319,7 +369,7 @@ class RetryableLLM(BaseLLM):
 _PROVIDER_MAP = {
     "deepseek": "deepseek/deepseek-chat",
     "groq": "groq/llama-3.3-70b-versatile",
-    "gemini": "gemini/gemini-2.5-flash",
+    "gemini": "gemini/gemini-3.1-flash-lite-preview",
     "openai": "gpt-4o",
     "openai-mini": "gpt-4o-mini",
     "mimo": PRIMARY_MODEL,

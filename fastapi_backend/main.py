@@ -1,6 +1,8 @@
 import os
 import sys
 import io
+import threading
+import time
 import warnings
 
 from dotenv import load_dotenv
@@ -9,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deep_research_team.settings import ENV_VARS, setup_logging, validate_env
-from deep_research_team.tools.db_utils import init_db
+from deep_research_team.tools.db_utils import claim_next_task, init_db
+from fastapi_backend.workers.crew_runner import run_crew_task
 
 from fastapi_backend.api.analysis import router as analysis_router
 from fastapi_backend.api.reports import router as reports_router
@@ -59,11 +62,30 @@ app.include_router(branding_router)
 app.include_router(history_router)
 
 
+def _run_worker() -> None:
+    """Worker daemon: polls DB for pending analysis tasks and executes them."""
+    while True:
+        try:
+            task = claim_next_task()
+            if task is None:
+                time.sleep(2)
+                continue
+            logger.info("Worker picked up task %s: %s", task["task_id"], task["field"])
+            run_crew_task(task["task_id"], task["field"], int(task["row_id"]))
+        except Exception as exc:
+            logger.error("Worker error: %s", exc, exc_info=True)
+            time.sleep(5)
+
+
 @app.on_event("startup")
 async def startup() -> None:
     if os.getenv("VERCEL") == "1" and not os.getenv("DATABASE_URL"):
         logger.warning("DATABASE_URL not set — using SQLite fallback")
     init_db()
+    logger.info("Worker daemon starting (LLM_PROVIDER=%s)", os.getenv("LLM_PROVIDER"))
+    t = threading.Thread(target=_run_worker, daemon=True)
+    t.start()
+    logger.info("Worker daemon started")
 
 
 @app.get("/api/health")

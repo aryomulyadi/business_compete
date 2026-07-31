@@ -11,10 +11,14 @@ from fastapi.responses import FileResponse, RedirectResponse
 from deep_research_team.backend import (
     generate_ai_logo,
     get_brand_names,
-    get_history_list,
     get_logo_history,
     read_report,
     save_logo_entry,
+)
+from deep_research_team.tools.db_utils import (
+    _connect,
+    get_branded_history_rows,
+    update_history_brand_names,
 )
 from deep_research_team.settings import setup_logging
 from deep_research_team.tools.image_generator import STYLE_PROMPTS
@@ -32,33 +36,40 @@ async def list_brand_concepts(
     limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
     """List completed reports that have brand concepts."""
-    all_items = get_history_list(limit=9999, offset=0)
 
-    branded: list[dict[str, Any]] = []
-    for item in all_items:
-        if item.status != "completed":
-            continue
-        if not item.report_path:
-            continue
-        content = read_report(item.report_path)
-        if not content:
-            continue
-        names = get_brand_names(content)
-        if not names:
-            continue
-        branded.append({
-            "row_id": item.id,
-            "field": item.field,
-            "created_at": item.created_at,
-            "brand_names": names,
-        })
+    branded, total = get_branded_history_rows(offset=offset, limit=limit)
 
-    branded.sort(key=lambda r: r["row_id"], reverse=True)
-    total = len(branded)
-    sliced = branded[offset:offset + limit]
+    if total < limit and offset == 0:
+        missing = limit - total
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                "SELECT id, business_field, created_at, report_path FROM history WHERE status='completed' AND (brand_names IS NULL OR brand_names='[]' OR brand_names='') ORDER BY id DESC LIMIT ?",
+                (missing,),
+            ).fetchall()
+        finally:
+            conn.close()
+        for r in rows:
+            row_id, field, created_at, report_path = r[0], r[1], r[2], r[3]
+            if not report_path:
+                continue
+            content = read_report(report_path)
+            if not content:
+                continue
+            names = get_brand_names(content)
+            if names:
+                update_history_brand_names(row_id, names)
+                branded.append({
+                    "row_id": row_id,
+                    "field": field,
+                    "created_at": created_at,
+                    "brand_names": names,
+                })
 
+    if total < len(branded):
+        total = len(branded)
     return {
-        "reports": sliced,
+        "reports": branded,
         "offset": offset,
         "limit": limit,
         "total": total,

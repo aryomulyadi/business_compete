@@ -2,6 +2,7 @@ from typing import List
 
 from crewai import Agent, Crew, Process, Task
 from crewai.agents.agent_builder.base_agent import BaseAgent
+from crewai.agents.crew_agent_executor import CrewAgentExecutor
 from crewai.project import CrewBase, agent, crew, task
 
 from deep_research_team.settings import (
@@ -39,29 +40,38 @@ class DeepResearchCrew:
 
     @agent
     def researcher(self) -> Agent:
+        llm = get_llm(max_tokens=RESEARCHER_MAX_TOKENS)
         return Agent(
             config=self.agents_config["researcher"],
-            llm=get_llm(max_tokens=RESEARCHER_MAX_TOKENS),
+            llm=llm,
+            function_calling_llm=llm,
+            executor_class=CrewAgentExecutor,
             tools=[search_internet, scrape_website, deep_search],
-            verbose=True,
+            verbose=False,
             max_iter=RESEARCHER_MAX_ITER,
         )
 
     @agent
     def analyst(self) -> Agent:
+        llm = get_llm(max_tokens=ANALYST_MAX_TOKENS)
         return Agent(
             config=self.agents_config["analyst"],
-            llm=get_llm(max_tokens=ANALYST_MAX_TOKENS),
-            verbose=True,
+            llm=llm,
+            function_calling_llm=llm,
+            executor_class=CrewAgentExecutor,
+            verbose=False,
             max_iter=ANALYST_MAX_ITER,
         )
 
     @agent
     def writer(self) -> Agent:
+        llm = get_llm(max_tokens=WRITER_MAX_TOKENS)
         return Agent(
             config=self.agents_config["writer"],
-            llm=get_llm(max_tokens=WRITER_MAX_TOKENS),
-            verbose=True,
+            llm=llm,
+            function_calling_llm=llm,
+            executor_class=CrewAgentExecutor,
+            verbose=False,
         )
 
     @task
@@ -91,6 +101,6 @@ class DeepResearchCrew:
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
             step_callback=progress_step_handler,
         )

@@ -23,6 +23,12 @@ _SEARCH_MARKER_START = "---[SEARCH_RESULT]---"
 _SEARCH_MARKER_END = "---[/SEARCH_RESULT]---"
 _URL_PATTERN = re.compile(r"https?://[^\s\)\"'\]]+")
 
+_session_cache: dict[str, Any] = {}
+
+
+def clear_session_cache() -> None:
+    _session_cache.clear()
+
 
 def clear_cache() -> None:
     """Remove all cached search results."""
@@ -239,8 +245,12 @@ def check_serper_api_key() -> tuple[bool, str]:
 
 def _serper_search(search_query: str, retries: int = 2, delay: float = 2.0) -> dict:
     key = _cache_key(search_query)
+    cached = _session_cache.get(search_query)
+    if cached is not None:
+        return cached
     cached = _read_cache(key)
-    if cached:
+    if cached is not None:
+        _session_cache[search_query] = cached
         return cached
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
@@ -248,6 +258,7 @@ def _serper_search(search_query: str, retries: int = 2, delay: float = 2.0) -> d
             serper = SerperDevTool()
             result = serper._run(search_query=search_query)
             _write_cache(key, result)
+            _session_cache[search_query] = result
             return result
         except requests.RequestException as e:
             last_exc = e
@@ -296,11 +307,16 @@ def _search_internet_impl(query: str) -> str:
 
 
 def _scrape_website_impl(url: str) -> str:
+    cached = _session_cache.get(f"scrape:{url}")
+    if cached is not None:
+        return cached
     try:
         scraper = ScrapeWebsiteTool()
         result = scraper._run(website_url=url)
         text = str(result)
-        return text[:4000] if len(text) > 4000 else text
+        text = text[:4000] if len(text) > 4000 else text
+        _session_cache[f"scrape:{url}"] = text
+        return text
     except Exception as e:
         logger.error("Scrape website failed for %r: %s", url, e)
         return f"Gagal mengambil konten dari {url}: {e}"

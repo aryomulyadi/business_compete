@@ -72,6 +72,58 @@ def _insert_returning_id(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> i
     return cursor.fetchone()[0] if _is_postgres() else cursor.lastrowid
 
 
+def _migrate_add_brand_names() -> None:
+    conn = _connect()
+    try:
+        if _is_postgres():
+            _execute(conn, "ALTER TABLE history ADD COLUMN IF NOT EXISTS brand_names TEXT")
+        else:
+            try:
+                _execute(conn, "ALTER TABLE history ADD COLUMN brand_names TEXT")
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+
+_migrate_add_brand_names()
+
+
+def update_history_brand_names(row_id: int, names: list[str]) -> None:
+    conn = _connect()
+    try:
+        _execute(conn, "UPDATE history SET brand_names=? WHERE id=?", (json.dumps(names), row_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_branded_history_rows(offset: int = 0, limit: int = 20) -> tuple[list[dict[str, Any]], int]:
+    conn = _connect()
+    try:
+        total = int(_execute(
+            conn,
+            "SELECT COUNT(*) FROM history WHERE status='completed' AND brand_names IS NOT NULL AND brand_names != '[]'",
+        ).fetchone()[0])
+        rows = _execute(
+            conn,
+            "SELECT id, business_field, status, created_at, brand_names FROM history WHERE status='completed' AND brand_names IS NOT NULL AND brand_names != '[]' ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    finally:
+        conn.close()
+    branded: list[dict[str, Any]] = []
+    for r in rows:
+        names = json.loads(r[4]) if isinstance(r[4], str) else r[4] or []
+        branded.append({
+            "row_id": r[0],
+            "field": r[1],
+            "created_at": r[3],
+            "brand_names": names,
+        })
+    return branded, total
+
+
 def save_history(field: str, status: str, report_path: Optional[str] = None, error: Optional[str] = None) -> int:
     conn = _connect()
     try:
