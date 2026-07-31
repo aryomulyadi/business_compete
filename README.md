@@ -77,15 +77,66 @@ npm run dev
 
 Buka http://localhost:3000 di browser.
 
-### Deployment Produksi
+### Deployment Produksi (VPS)
 
-Gunakan tiga deployment agar pekerjaan analisis tetap berjalan saat API Vercel diskalakan:
+Arsitektur: **Frontend di Vercel** + **Backend & worker di VPS** (Docker Compose).
 
-1. Deploy root repository sebagai **API Vercel** (entry point `api/index.py`) dan set `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, semua key AI, dan `CORS_ORIGINS`.
-2. Deploy folder `frontend/` sebagai **Frontend Vercel** dan set `NEXT_PUBLIC_API_URL` ke URL API pada langkah pertama.
-3. Deploy `Dockerfile.worker` ke layanan worker yang mendukung container (misalnya Railway atau Render) dengan environment yang sama. Worker mengambil job pending dari PostgreSQL dan menyimpan hasilnya ke Vercel Blob.
+```
+Vercel (Next.js) ──HTTP──▶ VPS :8000 (FastAPI + worker embedded)
+                                │
+                           PostgreSQL (Docker)
+                           Disk VPS (output/)
+```
 
-`DATABASE_URL` dan `BLOB_READ_WRITE_TOKEN` wajib pada production. Jangan memasukkan secret ke Git atau `wrangler.toml`.
+Worker analisis di-embed sebagai daemon thread di `fastapi_backend/main.py` (event `startup`), jadi **satu proses uvicorn** menangani API + eksekusi analisis. Tidak perlu deployment worker terpisah.
+
+#### Persyaratan VPS
+
+- Ubuntu 22.04/24.04 LTS, minimal 2 vCPU / 4GB RAM / 40GB SSD (RAM besar membantu saat build image crewai)
+- Docker + Docker Compose plugin terinstall
+
+#### Langkah Deploy
+
+```bash
+# 1. Clone repo & masuk direktori
+git clone https://github.com/aryomulyadi/business_compete.git
+cd business_compete
+
+# 2. Salin & isi environment
+cp .env.example .env
+# Wajib diisi: SERPER_API_KEY, minimal satu key LLM (GROQ_API_KEY/MIMO_API_KEY),
+# CORS_ORIGINS (URL frontend Vercel), NEXT_PUBLIC_API_URL (http://<VPS_IP>:8000)
+# KOSONGKAN BLOB_READ_WRITE_TOKEN → laporan disimpan di disk VPS (volume output)
+
+# 3. Jalankan
+docker compose up -d --build
+```
+
+Setelah up, backend tersedia di `http://<VPS_IP>:8000` (cek `/api/health`).
+
+#### Environment VPS
+
+| Variable | Nilai |
+|---|---|
+| `LLM_PROVIDER` | `groq` atau `mimo` (setelah top-up) |
+| `GROQ_API_KEY` | Groq key |
+| `MIMO_API_KEY`, `MIMO_BASE_URL`, `MIMO_THINKING` | untuk provider MIMO |
+| `SERPER_API_KEY` | Serper.dev search key |
+| `DATABASE_URL` | diisi otomatis oleh docker-compose (Postgres internal) |
+| `BLOB_READ_WRITE_TOKEN` | kosongkan → simpan ke disk VPS |
+| `CORS_ORIGINS` | `https://<frontend>.vercel.app` |
+| `NEXT_PUBLIC_API_URL` | `http://<VPS_IP>:8000` |
+
+Ganti provider LLM cukup dengan mengubah `LLM_PROVIDER` di `.env` lalu `docker compose up -d` (tanpa `--build`).
+
+#### Frontend (Vercel)
+
+Di dashboard Vercel, set `NEXT_PUBLIC_API_URL=http://<VPS_IP>:8000` lalu redeploy. Buka firewall VPS: buka port `8000` (API), jangan buka port `5432` (Postgres).
+
+#### Backup
+
+- Data DB: `docker volume ls` → volume `pgdata`
+- Laporan & logo: folder `output/` (volume `output`)
 
 ### Output
 
